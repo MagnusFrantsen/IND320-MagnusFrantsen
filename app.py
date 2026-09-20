@@ -8,6 +8,6 @@ navn = st.text_input("Hva heter du egentlig da?")
 if navn:
     st.success(f"Velkommen til appen, {navn}!")
 
-sted = st.text_input("Hvor er du?")
+sted = st.text_input("Where are you?")
 if sted:
     st.success(f"Du er i {sted}!")
