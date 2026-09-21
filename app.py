@@ -2,7 +2,7 @@ import streamlit as st
 
 def main():
     st.title("Front page")
-    st.wrote("This is the front page of the app.")
+    st.write("This is the front page of the app.")
 
 def analytics_page():
     st.title("Analytics page")
@@ -28,3 +28,6 @@ if wish:
 place = st.text_input("Where are you?")
 if place:
     st.success(f"You are in {place}!")
+
+pg = st.navigation(pages)
+pg.run()
