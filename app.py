@@ -1,5 +1,22 @@
 import streamlit as st
 
+def main():
+    st.title("Front page")
+    st.wrote("This is the front page of the app.")
+
+def analytics_page():
+    st.title("Analytics page")
+    st.write("This is the analytics page.")
+
+pages = {
+    "Home": [
+        st.Page(main,title ="Front page"),
+    ],
+    "Analytics": [
+        st.Page(analytics_page, title="Analytics")
+    ],
+}
+
 st.title("Min første Streamlit-app 🚀")
 st.write("Hei! Hvis du ser dette, fungerer alt som det skal.")
 
