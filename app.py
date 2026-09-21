@@ -17,14 +17,14 @@ pages = {
     ],
 }
 
-st.title("Min første Streamlit-app 🚀")
-st.write("Hei! Hvis du ser dette, fungerer alt som det skal.")
+st.title("This is the front page of the app.")
+st.write("This is the front page of the app. You can navigate to the analytics page using the sidebar menu.")
 
 # Enkel interaktiv komponent for å sjekke at alt reagerer
-navn = st.text_input("Hva heter du egentlig da?")
-if navn:
-    st.success(f"Velkommen til appen, {navn}!")
+wish = st.text_input("What do you want to do?")
+if wish:
+    st.success(f"You want to do: {wish}")
 
-sted = st.text_input("Where are you?")
-if sted:
-    st.success(f"Du er i {sted}!")
+place = st.text_input("Where are you?")
+if place:
+    st.success(f"You are in {place}!")
