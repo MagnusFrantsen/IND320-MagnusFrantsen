@@ -3,6 +3,17 @@ import pandas as pd
 
 @st.cache_data
 def load_data():
+    current_dir = Path(__file__).parent if "__file__" in locals() else Path.cwd()
+    
+    # Bygg en trygg, relativ filbane
+    file_path = current_dir / "data" / "reservoirs.csv"
+
+    if not file_path.exists():
+        file_path = Path("D2Dbook/data/reservoirs.csv")
+    if not file_path.exists():
+        file_path = Path("data/reservoirs.csv")
+
+    df = pd.read_csv(file_path)
 
     df = pd.read_csv("D2Dbook/data/reservoirs.csv")
     df.columns = ['Date', 'area_type','area_nr', 'iso_year', 'iso_week', 
