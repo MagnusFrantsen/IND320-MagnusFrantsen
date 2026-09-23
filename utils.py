@@ -1,16 +1,13 @@
 import streamlit as st
 import pandas as pd
+from pathlib import Path
 
 @st.cache_data
 def load_data():
-    current_dir = Path(__file__).parent if "__file__" in locals() else Path.cwd()
+    file_path = Path("D2Dbook/data/reservoirs.csv")
     
-    # Bygg en trygg, relativ filbane
-    file_path = current_dir / "data" / "reservoirs.csv"
-
     if not file_path.exists():
-        file_path = Path("D2Dbook/data/reservoirs.csv")
-    if not file_path.exists():
+        # Prøv en alternativ sti hvis mappen ligger direkte i roten
         file_path = Path("data/reservoirs.csv")
 
     df = pd.read_csv(file_path)
