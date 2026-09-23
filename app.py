@@ -10,8 +10,9 @@ def home():
 
 pages = [
     st.Page(home, title="Home Page"),
-    st.Page("pages/Analytics.py", title="Analytics"),
-    st.Page("pages/table_imported_data.py", title="Imported Data"),
+    st.Page("pages/plots.py", title="Plots"),
+    st.Page("pages/table_imported_data.py", title="Imported Data Table"),
+    st.Page("pages/dummy_page.py",title = "Dummy Page"),
 ]
 
 page = st.navigation(pages)

@@ -40,7 +40,8 @@ first_month = df_single_area[
 # Creating a summary list to hold data of the first month
 summary_data = []
 
-# Looping through the columns of the filtered dataframe to find the values for a given area
+# Looping through the columns of the filtered dataframe to find the values for a given area, 
+# given that the columns contain numeric data types
 for col in df_single_area.columns:
     if pd.api.types.is_numeric_dtype(df_single_area[col]):
         summary_data.append({
