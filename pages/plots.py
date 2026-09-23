@@ -10,10 +10,13 @@ st.write("This page has a plot of the imported data, a drop-down menu and a slid
 # Loading the data using the load_data function from utils.py
 df = load_data()
 
-col1, col2 = st.columns(2)
+area = 'NO'
+# Caching the filtering and choosing NO as area type to make the plotting make sense
+@st.cache_data
+def filter_by_area(df, area_type):
+    return df[df['area_type'] == area_type]
 
-df = df[df['area_type'] == 'NO']
-df = df.round(2)
+df = filter_by_area(df,area)
 
 df['Month'] = df['Date'].dt.to_period('M')
 
@@ -23,9 +26,22 @@ columns_to_plot = ['res_level', 'res_level_TWh', 'last_res_level', 'change_res_l
 # st.write(df.head())
 
 months = sorted(df['Month'].unique())
-with col1:
-    selected_column = st.selectbox("Select Column to Plot:", columns_to_plot)
 
+column_mapping = {
+    'res_level': "Reservoir Level (%)",
+    'res_level_TWh': "Reservoir Level (TWh)",
+    'last_res_level': "Last Reservoir Level (%)",
+    'change_res_level': "Change in Reservoir Level (%)"
+}
+
+col1, col2 = st.columns(2)
+
+with col1:
+    selected_column = st.selectbox(
+        "Select Column to Plot:", 
+        options=list(column_mapping.keys()),
+        format_func=lambda x: column_mapping[x])
+    
 with col2:
     selected_date_range = st.select_slider(
         "Select Date Range:", 
@@ -33,12 +49,20 @@ with col2:
         value = (months[0], months[0])
     )
 
+# Defining the start and end of 
 start, end = selected_date_range
 
-df_filtered_columns = df['Month'].between(start, end)
-df_filtered = df[df_filtered_columns]
+@st.cache_data
+def filter_by_month(df, start, end):
+    interval = df['Month'].between(start, end)
+    return df[interval]
+
+df_filtered = filter_by_month(df, start, end)
+nice_title = column_mapping[selected_column]
 
 fig,ax = plt.subplots()
 ax.plot(df_filtered['Date'], df_filtered[selected_column])
+ax.set_title(f"{nice_title} in Area Type {area}")
+ax.grid(True)
 
 st.pyplot(fig)

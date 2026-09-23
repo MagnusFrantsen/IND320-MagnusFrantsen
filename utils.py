@@ -11,6 +11,7 @@ def load_data():
 
     df['Date'] = pd.to_datetime(df['Date'])
     df = df.sort_values(by=['Date'], ascending=True)
+    df.round(3)
 
     return df
 
