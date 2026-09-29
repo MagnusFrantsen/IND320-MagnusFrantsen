@@ -4,7 +4,7 @@ from pathlib import Path
 
 @st.cache_data
 def load_data():
-    file_path = Path("D2Dbook/data/reservoirs.csv")
+    file_path = Path("Notebooks/data/reservoirs.csv")
     
     if not file_path.exists():
         # Prøv en alternativ sti hvis mappen ligger direkte i roten
