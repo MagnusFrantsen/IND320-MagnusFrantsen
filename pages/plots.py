@@ -8,7 +8,7 @@ st.title("Plots Page")
 st.write("This page has a plot of the imported data, a drop-down menu and a slider for user input.")
 
 # Loading the data using the load_data function from utils.py
-df = load_data()
+df, columns_to_plot = load_data()
 
 # Chossing the area plotted as 'NO' for this case, it would not make sense to plot everything on
 # top of each other as it seems like a total mess
@@ -19,7 +19,7 @@ area = 'NO'
 def filter_by_area(df, area_type):
     return df[df['area_type'] == area_type]
 
-df = filter_by_area(df,area)
+df= filter_by_area(df,area)
 
 df['Month'] = df['Date'].dt.to_period('M')
 
@@ -41,22 +41,22 @@ column_mapping = {
 }
 
 # Creating to columns
-col1, col2 = st.columns(2)
+col1 = st.columns(1)
 
 # The first column contains a selectbox to choose desired columns to plot
-with col1:
-    selected_column = st.selectbox(
-        "Select Column to Plot:", 
-        options=list(column_mapping.keys()) + ['All'],
-        format_func=lambda x: "All Columns" if x == 'All' else column_mapping[x])
+
+selected_column = st.selectbox(
+    "Select Column to Plot:", 
+    options=list(column_mapping.keys()) + ['All'],
+    format_func=lambda x: "All Columns" if x == 'All' else column_mapping[x])
 
 # The second column is a slider to choose the desired time interval for plotting 
-with col2:
-    selected_date_range = st.select_slider(
-        "Select Date Range:", 
-        options= sorted(df['Month'].unique()),
-        value = (months[0], months[0])
-    )
+
+selected_date_range = st.select_slider(
+    "Select Date Range:", 
+    options= sorted(df['Month'].unique()),
+    value = (months[0], months[0])
+)
 
 # Defining the start and end of interval that should be plotted
 start, end = selected_date_range
@@ -108,10 +108,12 @@ if selected_column == 'All':
             ax2.set_ylabel(column_mapping['change_res_level'], color='tab:red')
             ax2.tick_params(axis='y', labelcolor='tab:red')
 
-    # Collecting the legends in a common box regardless of subplot
-    lines1, labels1 = ax1.get_legend_handles_labels()
-    lines2, labels2 = ax2.get_legend_handles_labels()
-    ax1.legend(lines1 + lines2, labels1 + labels2)
+    # Collecting the legends in a common box regardless of subplot and making sure it can be removed if
+    # blocking the view of the plot of all the graphs
+    if st.checkbox("Show legends", value=True):
+        lines1, labels1 = ax1.get_legend_handles_labels()
+        lines2, labels2 = ax2.get_legend_handles_labels()
+        ax1.legend(lines1 + lines2, labels1 + labels2)
 
 # Plotting the selected column when something else than 'All' is chosen
 else:

@@ -21,4 +21,7 @@ def load_data():
     df = df.sort_values(by=['Date'], ascending=True)
     df.round(3)
 
-    return df
+    # Choosing these as the relevant columns to plot from the csv file and returning a list for use in the other files
+    columns_to_plot = ['res_level', 'res_level_TWh', 'prev_res_level', 'change_res_level']
+
+    return df, columns_to_plot
