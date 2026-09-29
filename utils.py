@@ -12,7 +12,6 @@ def load_data():
 
     df = pd.read_csv(file_path)
 
-    df = pd.read_csv("D2Dbook/data/reservoirs.csv")
     df.columns = ['Date', 'area_type','area_nr', 'iso_year', 'iso_week', 
               'res_level', 'capacity_TWh', 'res_level_TWh', 
               'next_publish_date', 'prev_res_level', 'change_res_level']
