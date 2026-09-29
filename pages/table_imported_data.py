@@ -8,9 +8,6 @@ st.write("This page displays the imported data in a table format.")
 # Loading the data using the load_data function from utils.py
 df = load_data()
 
-# 
-df['Date'] = pd.to_datetime(df['Date'])
-
 # Creating to columns for the select boxes
 col1, col2 = st.columns(2)
 

@@ -21,10 +21,8 @@ def filter_by_area(df, area_type):
 
 df= filter_by_area(df,area)
 
+# Creating a new column in the dataframe with the monts
 df['Month'] = df['Date'].dt.to_period('M')
-
-# Choosing these as the relevant columns to plot from the csv file
-columns_to_plot = ['res_level', 'res_level_TWh', 'prev_res_level', 'change_res_level']
 
 # Used this during development to check that the data was loaded correctly, and to see the first 5 rows of the dataframe
 # st.write(df.head())
@@ -39,9 +37,6 @@ column_mapping = {
     'prev_res_level': "Previous Reservoir Level (%)",
     'change_res_level': "Change in Reservoir Level (%)"
 }
-
-# Creating to columns
-col1 = st.columns(1)
 
 # The first column contains a selectbox to choose desired columns to plot
 
