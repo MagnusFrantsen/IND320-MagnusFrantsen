@@ -1,2 +1,6 @@
 # Ignore pycache
 __pycache__
+
+.venv311/
+
+no_sync/

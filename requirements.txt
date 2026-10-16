@@ -4,3 +4,7 @@ pandas
 ipykernel
 matplotlib
 pathlib
+requests
+pymongo
+plotly
+pyspark
