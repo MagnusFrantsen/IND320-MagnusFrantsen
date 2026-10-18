@@ -2,57 +2,43 @@ import streamlit as st
 import pandas as pd
 from utils import load_data
 
-st.title("Imported Data Table")
-st.write("This page displays the imported data in a table format.")
+st.title("Line Chart Columns")
+st.write("This page displays the imported data in a table format using LineChartColumn().")
 
 # Loading the data using the load_data function from utils.py
-df, columns_to_plot = load_data()
-
-# Creating to columns for the select boxes
-col1, col2 = st.columns(2)
+df, columns_to_plot, column_mapping = load_data()
 
 # Creating the select boxes for area_type
-with col1:
-    selected_area_type = st.selectbox("Select Area Type:", df['area_type'].unique())
+
+selected_area_type = st.radio("Area Type:", options=["EL","NO","VASS"])
 
 # Filtering the dataframe based on the selected area_type
 df_filtered_type = df[df['area_type'] == selected_area_type]
 
-# Creating the select box for area_nr based on the filtered dataframe
-with col2:
-    selected_area_nr = st.selectbox("Select Area Number:", sorted(df_filtered_type['area_nr'].unique()))
-
-# Filtering the dataframe based on the selected area_nr
-df_single_area = df_filtered_type[df_filtered_type['area_nr'] == selected_area_nr]
-
-# Finding the minimum date in the filtered dataframe
-min_date = df_single_area['Date'].min()
-
-# Selecting the first month of data (january 1995)
-first_month = df_single_area[
-    (df_single_area['Date'] >= min_date) & 
-    (df_single_area['Date'] < min_date + pd.DateOffset(months=1))
-]
-
 # Creating a summary list to hold data of the first month
 summary_data = []
 
-columns_to_exclude = ['iso_year','iso_week','area_nr','capacity_TWh']
-
 # Looping through the columns of the filtered dataframe to find the values for a given area, 
 # given that the columns contain numeric data types
-for col in df_single_area.columns:
-    if pd.api.types.is_numeric_dtype(df_single_area[col]) and col not in columns_to_exclude:
-        summary_data.append({
-            'Column': col,
-            'first_month_trend': first_month[col].to_list()
-        })
+for area_nr in sorted(df_filtered_type['area_nr'].unique()):
+    df_single_area = df_filtered_type[df_filtered_type['area_nr'] == area_nr]
+
+    # Finding the minimum date in the filtered dataframe
+    min_date = df_single_area['Date'].min()
+
+    first_month = df_single_area[
+    (df_single_area['Date'] >= min_date) & 
+    (df_single_area['Date'] < min_date + pd.DateOffset(months=1))
+    ]
+    
+    row = {'Area_nr': area_nr, **{column_mapping.get(col, col): first_month[col].to_list() for col in columns_to_plot}}
+
+    summary_data.append(row)
 
 # Creating a summary dataframe
 summary_df = pd.DataFrame(summary_data)
 
-# Displaying the summary dataframe using LineChartColumn hiding the index from the csv file
+# Displaying the summary dataframe using LineChartColumn
 st.dataframe(summary_df,
-             column_config={'first_month_trend': st.column_config.LineChartColumn('First month')},
-             hide_index=True)
-
+             column_config = {column_mapping.get(col, col): st.column_config.LineChartColumn(column_mapping.get(col, col)) for col in columns_to_plot},
+             hide_index = True)
