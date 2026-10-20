@@ -5,61 +5,33 @@ import matplotlib.pyplot as plt
 
 # Title and short description of the page
 st.title("Plots Page")
-st.write("This page has a plot of the imported data, a drop-down menu and a slider for user input.")
+st.write("This page has a plot of the imported data from NVE Magasinstatistikk API, a drop-down menu, radio buttons and a slider for user input.")
 
-st.set_page_config(layout="wide")
-# Loading the data using the load_data function from utils.py
-df, columns_to_plot, column_mapping = load_data()
+# Creating a list of all months available as options in the slider
+all_months = list(pd.period_range(start="1995-01", end=pd.Timestamp.today(), freq="M"))
 
-# Chossing the area plotted as 'NO' for this case, it would not make sense to plot everything on
-# top of each other as it seems like a total mess
+# Returning start, end variables used as input to determine the download interval in load_data()
+start, end = st.select_slider(
+    "Select Date Range:",
+    options=all_months,
+    value=(all_months[0], all_months[1])
+)
 
-area = st.radio("Select area type:",
-    options = ["EL", "NO", "VASS"])
+# Loading the data and defining the variables returned from the load_data() function in utils.py
+df, columns_to_plot, column_mapping = load_data(start, end)
 
-# Caching the filtering and choosing NO as area type to make the plotting make sense
-@st.cache_data
-def filter_by_area(df, area_type):
-    return df[df['area_type'] == area_type]
-
-df= filter_by_area(df,area)
-
-# Creating a new column in the dataframe with the monts
-df['Month'] = df['Date'].dt.to_period('M')
-
-# Used this during development to check that the data was loaded correctly, and to see the first 5 rows of the dataframe
-# st.write(df.head())
-
-# Sorting months and making sure the values are unique as I do not want duplicated in the slider
-months = sorted(df['Month'].unique())
-
-# The first column contains a selectbox to choose desired columns to plot
-
-
+# Selectbox to choose which column to plot
 selected_column = st.selectbox(
     "Select Column to Plot:", 
     options=list(column_mapping.keys()) + ['All'],
     format_func=lambda x: "All Columns" if x == 'All' else column_mapping[x])
 
-    # The second column is a slider to choose the desired time interval for plotting 
+# Radio buttons to select area type
+area = st.radio("Select area type:",
+    options = ["EL", "NO", "VASS"])
 
-selected_date_range = st.select_slider(
-    "Select Date Range:", 
-    options= sorted(df['Month'].unique()),
-    value = (months[0], months[0])
-)
-
-# Defining the start and end of interval that should be plotted
-start, end = selected_date_range
-
-#Caching the data and filtering the dataframe by the months defined by the interval from the slider
-@st.cache_data
-def filter_by_month(df, start, end):
-    interval = df['Month'].between(start, end)
-    return df[interval]
-
-# Creating a dataframe filtered by the interval defined earlier by calling for the filter_by_month function
-df_filtered = filter_by_month(df, start, end)
+# Caching the filtering and choosing NO as area type to make the plotting make sense
+df = df[df['area_type'] == area]
 
 # If 'All' is selected it should say "All columns" in the menu in the select box
 if selected_column == 'All':
@@ -77,45 +49,48 @@ if selected_column == 'All':
 
     # Loop going through every column
     for col in columns_to_plot:
-        
-        # PLotting every column except change, as it would not make sense to normalize this value and it should have a different scale on its axis
-        if col != 'change_res_level':
-            fig, ax = plt.subplots(figsize=(16,8))
 
-            for area_nr, group in df_filtered.groupby('area_nr'):
-                ax.plot(group['Date'], group[col], label=f"Area {area_nr}")
-                ax.set_title(f"{nice_title} in Area Type {area}")
+        fig, ax = plt.subplots(figsize=(16, 8))
 
-            # Creating the title of the plot
-            ax.set_title(f"{column_mapping[col]} in area type {area}")
-            ax.grid(True)
-            ax.legend(loc='upper right')
-            # Creating labels for the x- and y-axis
-            ax.set_xlabel('Time')
-            ax.set_ylabel(f"{column_mapping[col]}")
-            st.pyplot(fig)
+        # Looping through the area numbers for the chosen area type
+        for area_nr, group in df.groupby('area_nr'):
+            ax.plot(group['Date'], group[col], label=f"Area {area_nr}")
 
-        # If the columns name is 'change_res_level' it is plotted with a different axis to make sure the variation in the values are actually shown
-        if col == 'change_res_level':
-            fig, ax = plt.subplots(figsize=(16,8))
+        # Defining the name of the plot
+        ax.set_title(f"{column_mapping[col]} in area type {area}")
 
-            for area_nr, group in df_filtered.groupby('area_nr'):
-                ax.plot(group['Date'], group['change_res_level'], label=f"Area {area_nr}")
+        # Naming the axes
+        ax.set_xlabel('Time')
+        ax.set_ylabel(column_mapping[col])
 
-            ax.legend(loc='upper right')
-            ax.grid(True)
-            ax.set_title(f"{column_mapping[col]} in area type {area}")
-            ax.set_ylabel(column_mapping['change_res_level'], color='tab:red')
-            ax.tick_params(axis='y', labelcolor='tab:red')
-            st.pyplot(fig)
+        # Turning on a grid
+        ax.grid(True)
 
-# Plotting the selected column when something else than 'All' is chosen
+        # Setting the location of the legends to the upper right section
+        ax.legend(loc='upper right')
+
+        # Displaying the plot in the Streamlit APp
+        st.pyplot(fig)
+
+# Plotting the selected column when one column is chosen
 else:
-    for area_nr, group in df_filtered.groupby('area_nr'):
+    # Looping through each area number for the chosen area type
+    for area_nr, group in df.groupby('area_nr'):
+
+        # Creating the plot for the given area number
         ax1.plot(group['Date'], group[selected_column], label=f"Area {area_nr}")
+
+        # Defining the title of the plot 
         ax1.set_title(f"{nice_title} in Area Type {area}")
+
+        # Creating a legend
         ax1.legend()
-        ax1.grid()
+        # Turning on a grid in the plot
+        ax1.grid(True)
+
+    # Creating labels for the x- and y-axes
     ax1.set_xlabel('Time')
     ax1.set_ylabel(column_mapping[selected_column])
+
+    # Displaying the figure in the Streamlit App
     st.pyplot(fig)

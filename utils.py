@@ -4,7 +4,7 @@ import requests
 
 # Loading the data from the Magasinstatistikk API
 @st.cache_data(ttl=("1d"))
-def load_data():
+def load_data(start, end):
 
     URL_MAGASIN = "https://biapi.nve.no/magasinstatistikk/api/Magasinstatistikk/HentOffentligData"
 
@@ -18,7 +18,8 @@ def load_data():
 
     df['Date'] = pd.to_datetime(df['Date'])
     df = df.sort_values(by=['Date'], ascending=True)
-    df.round(3)
+    # Creating a new column in the dataframe with the monts
+    df = df[df['Date'].dt.to_period('M').between(start,end)]
 
     # Choosing these as the relevant columns to plot from the csv file and returning a list for use in the other files
     columns_to_plot = ['res_level', 'res_level_TWh', 'prev_res_level', 'change_res_level']
