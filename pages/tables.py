@@ -22,8 +22,8 @@ start, end = st.select_slider(
 # Loading the data using the load_data function from utils.py
 df, columns_to_plot, column_mapping = load_data(start,end)
 
-# Creating the select boxes for area_type
-selected_area_type = st.radio("Area Type:", options=["EL","NO","VASS"])
+# Uses the global area type selected in the sidebar
+selected_area_type = st.session_state["area_type"]
 
 # Filtering the dataframe based on the selected area_type
 df_filtered_type = df[df['area_type'] == selected_area_type]

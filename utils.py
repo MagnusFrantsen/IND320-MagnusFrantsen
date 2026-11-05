@@ -7,6 +7,8 @@ import matplotlib.pyplot as plt
 from scipy.fft import dct, idct
 from scipy.stats import median_abs_deviation
 from sklearn.neighbors import LocalOutlierFactor
+from scipy.signal import spectrogram
+from statsmodels.tsa.seasonal import STL
 
 # Loading the data from the Magasinstatistikk API
 @st.cache_data(ttl=("1d"))
@@ -52,7 +54,7 @@ WEATHER_VARS = [
 ]
 
 # NVE regions that make up each VASS area
-VASS_AREAS = {1: ["RS", "RØ"], 2: ["RV"], 3: ["RM"], 4: ["RN"]}
+VASS_AREAS = {1: ["RS", "RØ"], 2: ["RV"], 3: ["RM", "RN"]}
 
 
 def fetch_location(lat, lon, start_date, end_date):
@@ -83,7 +85,7 @@ def region_mean(weather):
     return weighted_sum / weight_sum
 
 
-@st.cache_data(ttl="1d")
+@st.cache_data(ttl="1d", show_spinner="Loading weather data...")
 def load_weather(area_type, area_nr, year):
     """Return hourly weather for an area, using the full NO3 result where it exists."""
     stored_file = Path(f"data/NO3_{year}_hourly.csv")
@@ -222,3 +224,56 @@ def lof_anomalies(series, proportion=0.01, n_neighbors=20):
         "anomalies": anomalies.sort_values("lof_score", ascending=False),
     }
     return fig, summary
+
+def filling_series(data, omr_type="NO", omr_nr=0):
+    """Return the weekly degree of filling in percent for one area."""
+    selected = data[(data["area_type"] == omr_type) & (data["area_nr"] == omr_nr)]
+    series = selected.set_index(pd.to_datetime(selected["Date"]))["res_level"].sort_index() * 100
+    return series.asfreq("7D").interpolate()  # fills any missing weeks
+
+def plot_stl(series, period=52, seasonal=13, trend=None, robust=True):
+    """Plot an STL decomposition of a weekly series.
+
+    series: weekly values with a time index and no gaps.
+    period: number of samples per seasonal cycle.
+    seasonal: seasonal smoother length in weeks, must be odd and at least 7.
+    trend: trend smoother length, must be odd. None lets STL choose from the other settings.
+    robust: reduces the influence of unusual weeks when True.
+    Returns the figure.
+    """
+    result = STL(series, period=period, seasonal=seasonal, trend=trend, robust=robust).fit()
+    fig = result.plot()
+    fig.set_size_inches(11, 7)
+    fig.tight_layout()
+    return fig
+
+def plot_spectrogram(series, window_length=104, window_overlap=78):
+    """Plot a spectrogram of a weekly series.
+
+    series: weekly values with a time index and no gaps.
+    window_length: number of weeks in each window.
+    window_overlap: number of weeks shared by neighbouring windows.
+    Returns the figure.
+    """
+    if window_overlap >= window_length:
+        raise ValueError("window_overlap must be smaller than window_length")
+
+    # fs=52 gives frequencies in cycles per year, since there are 52 samples per year
+    frequencies, times, power = spectrogram(
+        series.to_numpy(),
+        fs=52,
+        window="hann",
+        nperseg=window_length,
+        noverlap=window_overlap,
+        detrend="linear",
+    )
+    window_centers = series.index[0] + pd.to_timedelta(times * 365.25, unit="D")
+
+    fig, ax = plt.subplots(figsize=(11, 4.5))
+    mesh = ax.pcolormesh(window_centers, frequencies, 10 * np.log10(power + 1e-12), cmap="Blues", shading="auto")
+    fig.colorbar(mesh, ax=ax, label="Power (dB)")
+    ax.set_title(f"Spectrogram of reservoir filling ({window_length}-week window, {window_overlap}-week overlap)")
+    ax.set_ylabel("Frequency (cycles per year)")
+    ax.set_xlabel("Time")
+    fig.tight_layout()
+    return fig

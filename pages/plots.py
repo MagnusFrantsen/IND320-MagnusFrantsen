@@ -26,9 +26,8 @@ selected_column = st.selectbox(
     options=list(column_mapping.keys()) + ['All'],
     format_func=lambda x: "All Columns" if x == 'All' else column_mapping[x])
 
-# Radio buttons to select area type
-area = st.radio("Select area type:",
-    options = ["EL", "NO", "VASS"])
+# Uses the global area type selected in the sidebar
+area = st.session_state["area_type"]
 
 # Caching the filtering and choosing NO as area type to make the plotting make sense
 df = df[df['area_type'] == area]
