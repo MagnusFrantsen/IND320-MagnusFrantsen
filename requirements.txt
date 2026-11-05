@@ -8,3 +8,7 @@ pymongo
 plotly
 pyspark
 cassandra-driver
+geopandas>=1.0
+scipy
+scikit-learn
+statsmodels
