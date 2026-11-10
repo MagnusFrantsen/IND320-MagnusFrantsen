@@ -14,19 +14,25 @@ from statsmodels.tsa.seasonal import STL
 @st.cache_data(ttl=("1d"))
 def load_data(start, end):
 
+    # Address of NVE's public API for weekly reservoir statistics (Magasinstatistikk)
     URL_MAGASIN = "https://biapi.nve.no/magasinstatistikk/api/Magasinstatistikk/HentOffentligData"
 
+    # Downloading the data; timeout=15 stops the request if the API has not answered within 15 seconds
     response = requests.get(URL_MAGASIN, timeout = 15)
 
+    # The API returns a list of JSON records, which becomes one row each in a DataFrame
     df = pd.DataFrame(response.json())  
 
+    # Renaming the columns from the API's Norwegian names to short English names
     df.columns = ['Date', 'area_type','area_nr', 'iso_year', 'iso_week', 
               'res_level', 'capacity_TWh', 'res_level_TWh', 
               'next_publish_date', 'prev_res_level', 'change_res_level']
 
+    # Converting the Date column from text to datetime, so it can be sorted and compared as dates
     df['Date'] = pd.to_datetime(df['Date'])
+    # Sorting the rows by date, oldest first
     df = df.sort_values(by=['Date'], ascending=True)
-    # Creating a new column in the dataframe with the monts
+    # Keeping only the rows with months between start and end including both
     df = df[df['Date'].dt.to_period('M').between(start,end)]
 
     # Choosing these as the relevant columns to plot from the csv file and returning a list for use in the other files
@@ -40,10 +46,13 @@ def load_data(start, end):
         'change_res_level': "Change in Reservoir Level (%)"
     }
 
+    # Returning relevant variables from load data
     return df, columns_to_plot, column_mapping
 
+# The address for the Open-Meteo API 
 WEATHER_URL = "https://archive-api.open-meteo.com/v1/archive"
 
+# Defining the weather parameters wanting to be downloaded in a list for later use
 WEATHER_VARS = [
     "temperature_2m",
     "precipitation",
@@ -56,9 +65,11 @@ WEATHER_VARS = [
 # NVE regions that make up each VASS area
 VASS_AREAS = {1: ["RS", "RØ"], 2: ["RV"], 3: ["RM", "RN"]}
 
-
+# Defining the function fetch locations
 def fetch_location(lat, lon, start_date, end_date):
     """Download hourly ERA5 data for one location."""
+
+    # Defining the parameters for the download
     params = {
         "latitude": lat,
         "longitude": lon,
@@ -70,13 +81,17 @@ def fetch_location(lat, lon, start_date, end_date):
         "wind_speed_unit": "ms",
         "elevation": "nan",
     }
+
+    # Creating a get response from Open-Meteo
     response = requests.get(WEATHER_URL, params=params, timeout=60)
     response.raise_for_status()
+    # Converting the JSON-response to a pandas DataFrame
     frame = pd.DataFrame(response.json()["hourly"])
     frame["time"] = pd.to_datetime(frame["time"], utc=True)
+    # Returning frame
     return frame
 
-
+# Creating a function to compute the mean of a region
 def region_mean(weather):
     """Compute the hourly mean for the area, weighted by the number of points per cell."""
     values = weather[WEATHER_VARS]
@@ -84,10 +99,12 @@ def region_mean(weather):
     weight_sum = values.notna().mul(weather["n_points"], axis=0).groupby(weather["time"]).sum()
     return weighted_sum / weight_sum
 
-
+# Creating the load_weather function with 1d cache and a spinner showing when it is running
 @st.cache_data(ttl="1d", show_spinner="Loading weather data...")
 def load_weather(area_type, area_nr, year):
     """Return hourly weather for an area, using the full NO3 result where it exists."""
+
+    # Using the NO3 data saved from the notebook if it exists, so the app does not have to call the API for NO3
     stored_file = Path(f"data/NO3_{year}_hourly.csv")
     if area_type == "EL" and area_nr == 3 and stored_file.exists():
         return pd.read_csv(stored_file, index_col="time", parse_dates=True)
@@ -95,13 +112,18 @@ def load_weather(area_type, area_nr, year):
     # Finding the area names used in locations.csv
     areas = [f"NO {area_nr}"] if area_type == "EL" else VASS_AREAS[area_nr]
 
+    # Reading the saved locations
     locations = pd.read_csv("data/locations.csv")
+    # Keeping only the ones in the selected area
     selected = locations[locations["area"].isin(areas)]
 
+    # Downloading hourly weather for each location.
     frames = []
     for row in selected.itertuples():
         frame = fetch_location(row.lat, row.lon, f"{year}-01-01", f"{year}-12-31")
         frames.append(frame.assign(n_points=row.n_points))
+    
+    # Combining all locations into one table and returning the weighted hourly mean for the area
     return region_mean(pd.concat(frames, ignore_index=True))
 
 # Creating a function to remove slow variations from a time series using the Discrete Cosine Transform (DCT).
@@ -124,13 +146,15 @@ def dct_highpass(series, cutoff_days=30):
 
 # Creating a function to identify outliers in a time series using Statistical Process Control (SPC) 
 # limits based on robust statistics of the seasonally adjusted temperature variations (SATV).
-def spc_outliers(series, cutoff_days=30, n_std=3.0):
+def spc_outliers(series, cutoff_days=30, n_std=3.0, label="Temperature (°C)", title="Temperature outliers"):
     """Find outliers with SPC limits based on robust statistics of the SATV.
 
     series: hourly values with a time index.
     cutoff_days: variation slower than this counts as seasonal.
     n_std: number of robust standard deviations from the median to the limits.
     Returns the figure and a dictionary with a summary and a table of the outliers.
+    label: name and unit of the series, shown on the y-axis and in the legend.
+    title: title of the plot.
     """
 
     # The seasonally adjusted temperature variations (SATV) are computed using the DCT highpass filter 
@@ -157,12 +181,13 @@ def spc_outliers(series, cutoff_days=30, n_std=3.0):
 
     # Creating a plot to visualize the original series, SPC limits, and identified outliers.
     fig, ax = plt.subplots(figsize=(11, 4.5))
-    ax.plot(series.index, series, color="#2a78d6", linewidth=0.7, label=series.name or "Value")
-    ax.plot(series.index, upper, color="#52514e", linewidth=1, linestyle="--", label="SPC limits")
-    ax.plot(series.index, lower, color="#52514e", linewidth=1, linestyle="--")
-    ax.scatter(outliers.index, outliers["value"], color="#eb6834", s=12, zorder=3, label="Outliers")
-    ax.set_title(f"{len(outliers)} outliers ({n_std:g} robust SD, {cutoff_days}-day cutoff)")
-    ax.set_ylabel(series.name or "Value")
+    # Plotting the series, the control limits and the outliers, with readable labels and the outlier count in the legend
+    ax.plot(series.index, series, color="tab:blue", linewidth=0.7, label=label)
+    ax.plot(series.index, upper, color="dimgray", linewidth=1, linestyle="--", label=f"Control limits (±{n_std:g} SD)")
+    ax.plot(series.index, lower, color="dimgray", linewidth=1, linestyle="--")
+    ax.scatter(outliers.index, outliers["value"], color="tab:orange", s=12, zorder=3, label=f"Outliers ({len(outliers)})")
+    ax.set_title(title)
+    ax.set_ylabel(label)
     ax.grid(axis="y", alpha=0.3)
     ax.legend(loc="upper right", frameon=False)
     fig.tight_layout()
@@ -181,13 +206,15 @@ def spc_outliers(series, cutoff_days=30, n_std=3.0):
     }
     return fig, summary
 
-def lof_anomalies(series, proportion=0.01, n_neighbors=20):
+def lof_anomalies(series, proportion=0.01, n_neighbors=20, label="Temperature (°C)", title="Temperature anomalies"):
     """Find anomalies in a time series with the Local Outlier Factor method.
 
     series: hourly values with a time index.
     proportion: share of the points to mark as anomalies.
     n_neighbors: number of neighbours each point is compared with.
     Returns the figure and a dictionary with a summary and a table of the anomalies.
+    label: name and unit of the series, shown on the y-axis and in the legend.
+    title: title of the plot.
     """
     if series.isna().any():
         raise ValueError("LOF needs a series without missing values")
@@ -207,10 +234,10 @@ def lof_anomalies(series, proportion=0.01, n_neighbors=20):
     anomalies = pd.DataFrame({"value": series[is_anomaly], "lof_score": scores[is_anomaly]})
 
     fig, ax = plt.subplots(figsize=(11, 4.5))
-    ax.plot(series.index, series, color="#2a78d6", linewidth=0.7, label=series.name or "Value")
-    ax.scatter(anomalies.index, anomalies["value"], color="#eb6834", s=12, zorder=3, label="Anomalies")
-    ax.set_title(f"{len(anomalies)} anomalies with LOF ({proportion:.1%} of points)")
-    ax.set_ylabel(series.name or "Value")
+    ax.plot(series.index, series, color="tab:blue", linewidth=0.7, label=label)
+    ax.scatter(anomalies.index, anomalies["value"], color="tab:orange", s=12, zorder=3, label=f"Anomalies ({len(anomalies)})")
+    ax.set_title(title)
+    ax.set_ylabel(label)
     ax.grid(axis="y", alpha=0.3)
     ax.legend(loc="upper right", frameon=False)
     fig.tight_layout()
@@ -227,11 +254,16 @@ def lof_anomalies(series, proportion=0.01, n_neighbors=20):
 
 def filling_series(data, omr_type="NO", omr_nr=0):
     """Return the weekly degree of filling in percent for one area."""
-    selected = data[(data["area_type"] == omr_type) & (data["area_nr"] == omr_nr)]
-    series = selected.set_index(pd.to_datetime(selected["Date"]))["res_level"].sort_index() * 100
-    return series.asfreq("7D").interpolate()  # fills any missing weeks
 
-def plot_stl(series, period=52, seasonal=13, trend=None, robust=True):
+     # Keeping only the rows for the selected area
+    selected = data[(data["area_type"] == omr_type) & (data["area_nr"] == omr_nr)]
+    # Using the date as index, sorting by date, and converting the filling from a share (0–1) to percent
+    series = selected.set_index(pd.to_datetime(selected["Date"]))["res_level"].sort_index() * 100
+    # Setting a fixed weekly frequency, so STL and the spectrogram get evenly spaced data.
+    # Any missing weeks get a value interpolated between the neighbouring weeks
+    return series.asfreq("7D").interpolate()
+
+def plot_stl(series, period=52, seasonal=13, trend=None, robust=True, title ="STL decomposition of weekly reservoir filling"):
     """Plot an STL decomposition of a weekly series.
 
     series: weekly values with a time index and no gaps.
@@ -243,11 +275,21 @@ def plot_stl(series, period=52, seasonal=13, trend=None, robust=True):
     """
     result = STL(series, period=period, seasonal=seasonal, trend=trend, robust=robust).fit()
     fig = result.plot()
+
+    # Readable names with units
+    names = ["Filling (%)", "Trend (%)", "Seasonal (%)", "Residual (%)"]
+    for ax, name in zip(fig.axes, names):
+        ax.set_title("")
+        ax.set_ylabel(name)
+
+    # One title for the whole figure, and a size that fits the page
+    fig.suptitle(title)
     fig.set_size_inches(11, 7)
     fig.tight_layout()
+    # Returning the figure
     return fig
 
-def plot_spectrogram(series, window_length=104, window_overlap=78):
+def plot_spectrogram(series, window_length=104, window_overlap=78, title="Spectrogram of reservoir filling"):
     """Plot a spectrogram of a weekly series.
 
     series: weekly values with a time index and no gaps.
@@ -255,10 +297,13 @@ def plot_spectrogram(series, window_length=104, window_overlap=78):
     window_overlap: number of weeks shared by neighbouring windows.
     Returns the figure.
     """
+
+    # The windows must move forward, so the overlap has to be smaller than the window
     if window_overlap >= window_length:
         raise ValueError("window_overlap must be smaller than window_length")
 
-    # fs=52 gives frequencies in cycles per year, since there are 52 samples per year
+    # Computing how strong each frequency is in each window.
+    # fs=52 gives frequencies in cycles per year, since there are 52 samples per year.
     frequencies, times, power = spectrogram(
         series.to_numpy(),
         fs=52,
@@ -267,13 +312,20 @@ def plot_spectrogram(series, window_length=104, window_overlap=78):
         noverlap=window_overlap,
         detrend="linear",
     )
-    window_centers = series.index[0] + pd.to_timedelta(times * 365.25, unit="D")
+    # Converting the window centres (given in years from the start) into dates for the x-axis and
+    # times * 52 is the position in weeks, so times * 52 * 7 gives the exact number of days from the start
+    window_centers = series.index[0] + pd.to_timedelta(times * 52 * 7, unit="D")
 
+    # Plotting the power in decibels as colours: time on the x-axis, frequency on the y-axis.
     fig, ax = plt.subplots(figsize=(11, 4.5))
+
+    # 1e-12 avoids taking the log of zero
     mesh = ax.pcolormesh(window_centers, frequencies, 10 * np.log10(power + 1e-12), cmap="Blues", shading="auto")
     fig.colorbar(mesh, ax=ax, label="Power (dB)")
-    ax.set_title(f"Spectrogram of reservoir filling ({window_length}-week window, {window_overlap}-week overlap)")
+    ax.set_title(title)
     ax.set_ylabel("Frequency (cycles per year)")
-    ax.set_xlabel("Time")
+    ax.set_xlabel("Year")
     fig.tight_layout()
+
+    # Returning the figure
     return fig
