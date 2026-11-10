@@ -15,7 +15,6 @@ Repository for assignments in IND320 Fall 2026, including Jupyter notebooks, Str
 - **IND320/**
   - **data/**
     - shapefiles/
-    - weather_cache/
     - locations.csv
     - NO3_2024_hourly.csv
   - **Notebooks/**
