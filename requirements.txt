@@ -12,3 +12,4 @@ geopandas>=1.0
 scipy
 scikit-learn
 statsmodels
+river
