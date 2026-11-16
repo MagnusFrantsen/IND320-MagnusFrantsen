@@ -1,6 +1,6 @@
 import streamlit as st
 from requests.exceptions import RequestException
-from utils import load_weather, lof_anomalies, spc_outliers
+from utils import load_weather, lof_anomalies, spc_outliers, WEATHER_VARS, WEATHER_LABELS
 import plotly.express as px
 
 # Naming the page
@@ -10,7 +10,20 @@ st.title("Outlier and Anomaly Detection")
 area_type = st.session_state["area_type"]
 area_nr = st.session_state["area_nr"]
 
-st.write(f"Hourly temperature in {area_type} {area_nr}, 2024. Points far from the normal seasonal pattern are marked.")
+# Selector for the weather property, used by both tabs. Temperature is first in the list, so it is the default.
+# The key keeps the choice in session state when the user leaves the page and comes back.
+prop = st.selectbox(
+    "Weather property",
+    options=WEATHER_VARS,
+    format_func=lambda var: f"{WEATHER_LABELS[var][0]} ({WEATHER_LABELS[var][1]})",
+    key="outlier_property",
+    persist_state="session"
+)
+name, unit, decimals = WEATHER_LABELS[prop]
+label = f"{name} ({unit})"
+
+st.write(f"Hourly {name.lower()} in {area_type} {area_nr}, 2024. Points far from the normal seasonal pattern are marked.")
+
 # If the selected area type is "NO", display an info message and stop the execution of the page.
 # Weather data needs a specific area, because a national mean would average away regional outliers.
 # The page therefore stops here when all of Norway (NO) is selected.
@@ -40,9 +53,9 @@ if tab1.open:
                         help="Variation slower than this counts as seasonal (DCT high-pass filter).")
             n_std = st.slider("Limit width (standard deviations)", 1.0, 6.0, 3.0, step=0.5)
 
-        # Defining the figure and the summary by calling spc_outliers
-        fig, summary = spc_outliers(weather["temperature_2m"], cutoff_days, n_std,
-                                    title=f"Temperature outliers in {area_type} {area_nr}, 2024")
+        # Defining the figure and the summary by calling spc_outliers on the chosen property
+        fig, summary = spc_outliers(weather[prop], cutoff_days, n_std, label=label,
+                                    title=f"{name} outliers in {area_type} {area_nr}, 2024")
 
         # Displaying the interactive Plotly chart, themed by the app's config.toml
         st.plotly_chart(fig)
@@ -62,10 +75,9 @@ if tab2.open:
         # Slider for how many nearby points each point is compared with (From 5 to 100, 20 as default).
         n_neighbors = st.slider("Number of neighbours", 5, 100, 20)
 
-        # Defining the figure and summary by calling lof_anomalies
-         # Defining the figure and summary by calling lof_anomalies, with the selected area in the title
-        fig, summary = lof_anomalies(weather["temperature_2m"], proportion, n_neighbors,
-                            title=f"Temperature anomalies in {area_type} {area_nr}, 2024 (Local Outlier Factor)")
+        # Defining the figure and summary by calling lof_anomalies on the chosen property
+        fig, summary = lof_anomalies(weather[prop], proportion, n_neighbors, label=label,
+                                     title=f"{name} anomalies in {area_type} {area_nr}, 2024 (Local Outlier Factor)")
         
         # Displaying the interactive Plotly chart, themed by the app's config.toml
         st.plotly_chart(fig)
@@ -73,8 +85,9 @@ if tab2.open:
         # Defining the columns
         col1, col2, col3 = st.columns(3)
         col1.metric("Anomalies", summary["n_anomalies"])
-        col2.metric("Lowest value (°C)", f"{summary['value_min']:.1f}")
-        col3.metric("Highest value (°C)", f"{summary['value_max']:.1f}")
+        # Lowest and highest anomaly, with the unit and decimals of the chosen property
+        col2.metric(f"Lowest value ({unit})", f"{summary['value_min']:.{decimals}f}")
+        col3.metric(f"Highest value ({unit})", f"{summary['value_max']:.{decimals}f}")
 
         # Making a table with one row per month (1–12) and the number of anomalies in each.
         # Months with no anomalies get 0, so all 12 months show in the bar chart.

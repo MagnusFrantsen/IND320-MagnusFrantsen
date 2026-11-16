@@ -75,6 +75,16 @@ WEATHER_VARS = [
     "soil_moisture_0_to_7cm",
 ]
 
+# Readable name, unit and number of decimals for each weather variable, used in selectors, labels and metrics
+WEATHER_LABELS = {
+    "temperature_2m": ("Temperature", "°C", 1),
+    "precipitation": ("Precipitation", "mm", 1),
+    "snowfall": ("Snowfall", "cm", 1),
+    "shortwave_radiation": ("Solar radiation", "W/m²", 0),
+    "wind_speed_10m": ("Wind speed", "m/s", 1),
+    "soil_moisture_0_to_7cm": ("Soil moisture", "m³/m³", 3),
+}
+
 # Defining the function fetch locations
 def fetch_location(lat, lon, start_date, end_date):
     """Download hourly ERA5 data for one location."""
