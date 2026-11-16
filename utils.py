@@ -62,9 +62,6 @@ WEATHER_VARS = [
     "soil_moisture_0_to_7cm",
 ]
 
-# NVE regions that make up each VASS area
-VASS_AREAS = {1: ["RS", "RØ"], 2: ["RV"], 3: ["RM", "RN"]}
-
 # Defining the function fetch locations
 def fetch_location(lat, lon, start_date, end_date):
     """Download hourly ERA5 data for one location."""
@@ -91,6 +88,49 @@ def fetch_location(lat, lon, start_date, end_date):
     # Returning frame
     return frame
 
+def fetch_locations(locations, start_date, end_date):
+    """Download hourly ERA5 data for several locations in one request.
+
+    locations: table with the columns lat, lon and n_points
+    Returns one table with all locations below each other, including n_points.
+    """
+    count = len(locations)
+
+    # Defining the parameters for the download
+    params = {
+        # All coordinates in one request, separated by commas
+        "latitude": ",".join(str(lat) for lat in locations["lat"]),
+        "longitude": ",".join(str(lon) for lon in locations["lon"]),
+        "start_date": start_date,
+        "end_date": end_date,
+        "hourly": ",".join(WEATHER_VARS),
+        "models": "era5",
+        "timezone": "UTC",
+        "wind_speed_unit": "ms",
+        # One value per location: use each grid cell's own elevation
+        "elevation": ",".join(["nan"] * count),
+    }
+
+    # Creating a get response from Open-Meteo (longer timeout, since the answer is larger)
+    response = requests.get(WEATHER_URL, params=params, timeout=120)
+    response.raise_for_status()
+
+    # Several locations give a list with one structure per location,
+    # while a single location gives one structure
+    results = response.json()
+    if isinstance(results, dict):
+        results = [results]
+    if len(results) != count:
+        raise ValueError(f"Asked for {count} locations but received {len(results)}")
+
+    # Converting each structure to a table and adding the weight of its location
+    frames = []
+    for result, n_points in zip(results, locations["n_points"]):
+        frame = pd.DataFrame(result["hourly"])
+        frame["time"] = pd.to_datetime(frame["time"], utc=True)
+        frames.append(frame.assign(n_points=n_points))
+    return pd.concat(frames, ignore_index=True)
+
 # Creating a function to compute the mean of a region
 def region_mean(weather):
     """Compute the hourly mean for the area, weighted by the number of points per cell."""
@@ -109,22 +149,18 @@ def load_weather(area_type, area_nr, year):
     if area_type == "EL" and area_nr == 3 and stored_file.exists():
         return pd.read_csv(stored_file, index_col="time", parse_dates=True)
 
-    # Finding the area names used in locations.csv
-    areas = [f"NO {area_nr}"] if area_type == "EL" else VASS_AREAS[area_nr]
+    # Finding the area name used in locations.csv, for example "NO 3" or "VASS 1"
+    area = f"NO {area_nr}" if area_type == "EL" else f"VASS {area_nr}"
 
-    # Reading the saved locations
+    # Reading the saved locations and keeping only the ones in the selected area
     locations = pd.read_csv("data/locations.csv")
-    # Keeping only the ones in the selected area
-    selected = locations[locations["area"].isin(areas)]
+    selected = locations[locations["area"] == area]
 
-    # Downloading hourly weather for each location.
-    frames = []
-    for row in selected.itertuples():
-        frame = fetch_location(row.lat, row.lon, f"{year}-01-01", f"{year}-12-31")
-        frames.append(frame.assign(n_points=row.n_points))
-    
-    # Combining all locations into one table and returning the weighted hourly mean for the area
-    return region_mean(pd.concat(frames, ignore_index=True))
+    # Downloading hourly weather for all the selected locations in one request
+    weather = fetch_locations(selected, f"{year}-01-01", f"{year}-12-31")
+
+    # Returning the weighted hourly mean for the area
+    return region_mean(weather)
 
 # Creating a function to remove slow variations from a time series using the Discrete Cosine Transform (DCT).
 def dct_highpass(series, cutoff_days=30):
