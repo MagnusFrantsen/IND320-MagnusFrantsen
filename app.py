@@ -1,4 +1,17 @@
 import streamlit as st
+import pandas as pd
+from requests.exceptions import RequestException
+from utils import (area_map, area_name, area_from_name, filling_for_month, weather_for_month,
+                   WEATHER_VARS, WEATHER_LABELS, SUM_VARS)
+
+def on_map_click():
+    """Store the clicked area as the selected area, so the sidebar and all pages use it.
+
+    Runs before the page is redrawn, which is what allows it to change the sidebar's selection.
+    """
+    points = st.session_state["map"]["selection"]["points"]
+    if points:
+        st.session_state["area_type"], st.session_state["area_nr"] = area_from_name(points[0]["location"])
 
 # Creating the title and description for the whole Streamlit app, including buttons for navigation to different pages.
 def home():
@@ -8,6 +21,38 @@ def home():
     
     st.write("""You can navigate to the different pages using the buttons below, 
     or by using the top navigation bar.""")
+
+        # The area type and area chosen in the sidebar (or by clicking the map)
+    area_type = st.session_state["area_type"]
+    area_nr = st.session_state["area_nr"]
+
+    # What to colour the areas by, and which month; both are kept when visiting other pages
+    col_colour, col_month = st.columns(2)
+    colour_by = col_colour.selectbox(
+        "Colour areas by", ["filling"] + WEATHER_VARS,
+        format_func=lambda v: "Reservoir filling" if v == "filling" else WEATHER_LABELS[v][0],
+        key="map_colour", persist_state="session")
+    months = list(pd.period_range("1995-01", pd.Timestamp.today().to_period("M") - 1, freq="M"))
+    month = col_month.select_slider("Month", options=months, value=months[-1],
+                                    key="map_month", persist_state="session")
+
+    # The value per area: reservoir filling in the last week of the month, or the month's weather
+    values, range_color = pd.Series(dtype=float), None
+    if colour_by == "filling":
+        values, label, range_color = filling_for_month(area_type, month), "Reservoir filling (%)", (0, 100)
+    else:
+        name, unit, _ = WEATHER_LABELS[colour_by]
+        label = f"{name}, monthly {'total' if colour_by in SUM_VARS else 'mean'} ({unit})"
+        try:
+            values = weather_for_month(area_type, month)[colour_by]
+        except RequestException as error:
+            st.warning(f"Could not download weather data, so the areas are not coloured: {error}")
+
+    # The map; clicking an area calls on_map_click, which selects that area for all pages
+    fig = area_map(area_type, values, area_name(area_type, area_nr), label, range_color)
+    st.plotly_chart(fig, key="map", on_select=on_map_click, selection_mode="points")
+    st.caption(f"Selected area: {area_name(area_type, area_nr)}. Click another area to change it; "
+               "the area type is chosen in the sidebar.")
 
     # Three equal columns with a bordered card for each topic
     col1, col2, col3 = st.columns(3)

@@ -10,6 +10,8 @@ from scipy.signal import spectrogram
 from statsmodels.tsa.seasonal import STL
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
+import json
+import plotly.express as px
 
 # Colours used in every plot, chosen to stand out on the dark blue theme
 PLOT_COLORS = {
@@ -20,8 +22,8 @@ PLOT_COLORS = {
 # One colour per area number, in order (area 1, 2, 3, ...)
 AREA_COLORS = ["#5aa9e6", "#f2a900", "#7fc8a9", "#e07a5f", "#c9ada7"]
 
-# Colour scale for the spectrogram: from a blue near the page background, through light blue, to the highlight colour
-SPECTROGRAM_SCALE = [[0.0, "#14305a"], [0.5, "#5aa9e6"], [1.0, "#f2a900"]]
+# Colour scale for the spectrogram: dark blue for weak, muted blue in between, amber for strong frequencies
+SPECTROGRAM_SCALE = [[0.0, "#0d2240"], [0.6, "#2f6ea3"], [1.0, "#f2a900"]]
 
 # Loading the data from the Magasinstatistikk API
 @st.cache_data(ttl="1d", show_spinner="Downloading reservoir data from NVE...")
@@ -111,7 +113,7 @@ def fetch_location(lat, lon, start_date, end_date):
     # Returning frame
     return frame
 
-def fetch_locations(locations, start_date, end_date):
+def fetch_locations(locations, start_date, end_date, variables=WEATHER_VARS):
     """Download hourly ERA5 data for several locations in one request.
 
     locations: table with the columns lat, lon and n_points
@@ -126,7 +128,7 @@ def fetch_locations(locations, start_date, end_date):
         "longitude": ",".join(str(lon) for lon in locations["lon"]),
         "start_date": start_date,
         "end_date": end_date,
-        "hourly": ",".join(WEATHER_VARS),
+        "hourly": ",".join(variables),
         "models": "era5",
         "timezone": "UTC",
         "wind_speed_unit": "ms",
@@ -157,7 +159,8 @@ def fetch_locations(locations, start_date, end_date):
 # Creating a function to compute the mean of a region
 def region_mean(weather):
     """Compute the hourly mean for the area, weighted by the number of points per cell."""
-    values = weather[WEATHER_VARS]
+    # Every column except time and the weight is a weather variable
+    values = weather.drop(columns=["time", "n_points"])
     weighted_sum = values.mul(weather["n_points"], axis=0).groupby(weather["time"]).sum()
     weight_sum = values.notna().mul(weather["n_points"], axis=0).groupby(weather["time"]).sum()
     return weighted_sum / weight_sum
@@ -184,6 +187,193 @@ def load_weather(area_type, area_nr, year):
 
     # Returning the weighted hourly mean for the area
     return region_mean(weather)
+
+# GeoJSON outline file for each area type on the map
+MAP_FILES = {"EL": "data/map_price_areas.geojson",
+             "VASS": "data/map_vass_areas.geojson",
+             "NO": "data/map_norway_areas.geojson"}
+
+# Weather variables that are summed over a period; the others are averaged
+SUM_VARS = ["precipitation", "snowfall"]
+
+
+@st.cache_data
+def load_map_areas(area_type):
+    """Return the GeoJSON outlines for one area type, read once and kept in the cache."""
+    with open(MAP_FILES[area_type], encoding="utf-8") as f:
+        return json.load(f)
+
+
+def area_name(area_type, area_nr):
+    """Name of an area on the map and in locations.csv, e.g. 'NO 3', 'VASS 1' or 'Norway'."""
+    if area_type == "EL":
+        return f"NO {area_nr}"
+    if area_type == "VASS":
+        return f"VASS {area_nr}"
+    return "Norway"
+
+
+def area_from_name(name):
+    """The reverse of area_name: from a map name back to (area type, area number)."""
+    if name == "Norway":
+        return "NO", 0
+    kind, nr = name.split(" ")
+    return ("EL" if kind == "NO" else "VASS"), int(nr)
+
+
+def filling_for_month(area_type, month):
+    """Reservoir filling in percent for every area of a type, from the last published week in the month."""
+    # Loading the whole period once, so the cached download is reused for every month
+    df, _, _ = load_data(pd.Period("1995-01", "M"), pd.Timestamp.today().to_period("M"))
+    df = df[(df["area_type"] == area_type) & (df["Date"].dt.to_period("M") == month)]
+
+    # Keeping only the last week of the month, and converting the filling from a share to percent
+    last_week = df[df["Date"] == df["Date"].max()]
+    names = [area_name(area_type, nr) for nr in last_week["area_nr"]]
+    return pd.Series(last_week["res_level"].to_numpy() * 100, index=names)
+
+
+@st.cache_data(ttl="1d", show_spinner="Loading weather for the map...")
+def weather_for_month(area_type, month):
+    """Weather for every area of a type in one month: totals for precipitation and snowfall,
+    means for the other variables. Returns one row per area and one column per variable."""
+    # All grid cells for the area type, downloaded in one grouped request
+    locations = pd.read_csv("data/locations.csv")
+    prefix = "VASS " if area_type == "VASS" else "NO "
+    selected = locations[locations["area"].str.startswith(prefix)].reset_index(drop=True)
+    hourly = fetch_locations(selected, month.start_time.strftime("%Y-%m-%d"),
+                             month.end_time.strftime("%Y-%m-%d"))
+
+    # fetch_locations returns the locations below each other, in the order they were sent,
+    # with the same number of hours each, so each block of rows gets its area's name
+    hourly["area"] = np.repeat(selected["area"].to_numpy(), len(hourly) // len(selected))
+
+    # For the whole country, every price-area grid cell counts towards one area
+    if area_type == "NO":
+        hourly["area"] = "Norway"
+
+    # Weighted hourly mean per area, then the monthly total or mean of each variable
+    result = {}
+    for area, group in hourly.groupby("area"):
+        area_hourly = region_mean(group.drop(columns="area"))
+        result[area] = pd.concat([area_hourly.drop(columns=SUM_VARS).mean(), area_hourly[SUM_VARS].sum()])
+    return pd.DataFrame(result).T
+
+# Colour scale for the map, in the app's colours; the alpha value 0.6 makes the areas see-through
+MAP_SCALE = [(0.0, "rgba(13,34,64,0.6)"), (0.5, "rgba(47,110,163,0.6)"), (1.0, "rgba(242,169,0,0.6)")]
+
+
+def area_map(area_type, values, selected, label, range_color=None):
+    """Return a Plotly map of one area type, coloured by a value per area, with the selected area outlined.
+
+    area_type: "EL", "VASS" or "NO"
+    values: Series with one value per area, indexed by area name (e.g. "NO 3")
+    selected: name of the selected area, drawn with a thick outline
+    label: name and unit of the value, shown on the colour bar and when hovering
+    range_color: optional (min, max) for the colour scale; None uses the range of the values
+    """
+    geojson = load_map_areas(area_type)
+    names = [feature["properties"]["area"] for feature in geojson["features"]]
+    data = pd.DataFrame({"area": names, "value": [values.get(name) for name in names]})
+
+    # Areas coloured by their value; transparency comes from the RGBA colour scale, as in the course
+    fig = px.choropleth_map(
+        data, geojson=geojson, featureidkey="properties.area", locations="area", color="value",
+        color_continuous_scale=MAP_SCALE, range_color=range_color,
+        map_style="carto-darkmatter", center={"lat": 65, "lon": 15}, zoom=3.3,
+        labels={"value": label}, hover_name="area", hover_data={"area": False, "value": ":.1f"},
+    )
+    # Thin outlines on every area, and no fading of the other areas after a click
+    fig.update_traces(marker_line=dict(width=0.8, color="#9fb3c8"), unselected=dict(marker=dict(opacity=1)))
+
+    # The selected area drawn again on top, with no fill and a thick amber outline
+    fig.add_trace(go.Choroplethmap(
+        geojson=geojson, featureidkey="properties.area", locations=[selected], z=[0],
+        colorscale=[(0, "rgba(0,0,0,0)"), (1, "rgba(0,0,0,0)")], showscale=False,
+        marker_line=dict(width=4, color="#f2a900"), hoverinfo="skip",
+    ))
+    fig.update_layout(height=600, margin=dict(l=0, r=0, t=0, b=0))
+    return fig
+
+
+def to_nve_weeks(data, how="mean"):
+    """Aggregate a time-indexed Series/DataFrame to NVE weeks.
+
+    Weeks run Monday-Sunday in Norwegian time and are labelled with the Sunday date,
+    matching the Magasinstatistikk measurement.
+    """
+    # Hourly UTC data is moved to Norwegian time, so weeks split at Norwegian midnight
+    if data.index.tz is not None:
+        data = data.tz_convert("Europe/Oslo")
+    weekly = data.resample("W-SUN").agg(how)
+    # Dropping the time zone, so all sources get plain dates that can be joined
+    weekly.index = weekly.index.tz_localize(None)
+    return weekly
+
+
+@st.cache_data(ttl="1d", show_spinner=False)
+def load_property_year(area_type, area_nr, year, prop):
+    """Hourly values of one weather property for one area and one year, the weighted mean of its grid cells.
+    Fetching only one property keeps the request small, well below Open-Meteo's rate limit."""
+    locations = pd.read_csv("data/locations.csv")
+    selected = locations[locations["area"] == area_name(area_type, area_nr)]
+    end = min(pd.Timestamp(f"{year}-12-31"), pd.Timestamp.today().normalize() - pd.Timedelta(days=7))
+    hourly = fetch_locations(selected, f"{year}-01-01", end.strftime("%Y-%m-%d"), variables=[prop])
+    return region_mean(hourly)[prop]
+
+
+def load_weather_period(area_type, area_nr, start_year, end_year, prop):
+    """Weekly values of one weather property for one area over several years, one cached year at a time.
+    Precipitation and snowfall are weekly totals, the other properties weekly means."""
+    years = list(range(start_year, end_year + 1))
+    progress = st.progress(0.0, text=f"Downloading weather for {len(years)} years...")
+    parts = []
+    for i, year in enumerate(years, start=1):
+        parts.append(load_property_year(area_type, area_nr, year, prop))
+        progress.progress(i / len(years), text=f"Downloaded {year} ({i} of {len(years)})")
+    progress.empty()
+
+    # Joining the years, then aggregating to Monday-Sunday weeks; partly covered weeks are dropped
+    hourly = pd.concat(parts)
+    weekly = to_nve_weeks(hourly, "sum" if prop in SUM_VARS else "mean")
+    return weekly[to_nve_weeks(hourly, "count") >= 160]
+
+def sliding_window_correlation(reservoir, weather, lag, window):
+    """Correlation between a reservoir series and a weather series in a sliding window.
+
+    lag: weeks the weather is shifted forward, so lag 4 compares each week with the weather 4 weeks earlier
+    window: number of weeks in each window; each value is placed at the centre of its window
+    """
+    # Lining up the two series week by week, after shifting the weather by the lag
+    data = pd.concat([reservoir.rename("reservoir"), weather.shift(lag).rename("weather")],
+                     axis=1, join="inner").dropna()
+    return data["reservoir"].rolling(window, center=True).corr(data["weather"])
+
+
+def plot_swc(reservoir, weather, correlation, reservoir_label, weather_label, lag, window, title):
+    """Two panels sharing the time axis: both series on the same scale on top, the sliding correlation below."""
+    fig = make_subplots(rows=2, cols=1, shared_xaxes=True, vertical_spacing=0.08,
+                        subplot_titles=["Both series, standardised",
+                                        f"Correlation in a {window}-week window, weather {lag} weeks earlier"])
+
+    # Standardising both series (mean 0, standard deviation 1), so their shapes can be compared on one axis
+    for series, name, color in [(reservoir, reservoir_label, PLOT_COLORS["series"]),
+                                (weather.shift(lag), f"{weather_label}, {lag} weeks earlier", PLOT_COLORS["highlight"])]:
+        z = (series - series.mean()) / series.std()
+        fig.add_trace(go.Scatter(x=z.index, y=z, mode="lines", name=name, line=dict(color=color, width=1.5)),
+                      row=1, col=1)
+
+    # The sliding correlation, with a dashed zero line
+    fig.add_trace(go.Scatter(x=correlation.index, y=correlation, mode="lines", name="Correlation",
+                             line=dict(color=PLOT_COLORS["series"], width=2), showlegend=False), row=2, col=1)
+    fig.add_hline(y=0, line=dict(color=PLOT_COLORS["limits"], width=1, dash="dash"), row=2, col=1)
+
+    fig.update_yaxes(title_text="Standard deviations", row=1, col=1)
+    fig.update_yaxes(title_text="Correlation", range=[-1, 1], row=2, col=1)
+    fig.update_layout(title=title, height=650, hovermode="x unified",
+                      legend=dict(orientation="h", yanchor="bottom", y=1.04, x=0))
+    return fig
+
 
 # Creating a function to remove slow variations from a time series using the Discrete Cosine Transform (DCT).
 def dct_highpass(series, cutoff_days=30):
@@ -397,15 +587,22 @@ def plot_spectrogram(series, window_length=104, window_overlap=78, title="Spectr
     # times * 52 is the position in weeks, so times * 52 * 7 gives the exact number of days from the start
     window_centers = series.index[0] + pd.to_timedelta(times * 52 * 7, unit="D")
 
-        # Plotting the power in decibels as colours: time on the x-axis, frequency on the y-axis.
-    # 1e-12 avoids taking the log of zero
+    # Power in decibels; 1e-12 avoids taking the log of zero
+    power_db = 10 * np.log10(power + 1e-12)
+
+    # Colour range from the frequencies shown by default (0–6 cycles per year), so the colours
+    # spread over what is visible. Plotly needs both zmin and zmax for a custom range.
+    shown = frequencies <= 6
+    zmin, zmax = np.percentile(power_db[shown], 5), power_db[shown].max()
+
     fig = go.Figure(go.Heatmap(
-        x=window_centers, y=frequencies, z=10 * np.log10(power + 1e-12),
+        x=window_centers, y=frequencies, z=power_db, zmin=zmin, zmax=zmax,
         colorscale=SPECTROGRAM_SCALE, colorbar=dict(title="Power (dB)"),
-        # Hover text: month of the window, frequency and power
         hovertemplate="%{x|%Y-%m}<br>%{y:.2f} cycles per year<br>%{z:.1f} dB<extra></extra>",
     ))
-    fig.update_layout(title=title, xaxis_title="Year", yaxis_title="Frequency (cycles per year)", height=450)
+    # Showing 0–6 cycles per year by default, where the seasonal signal is; zoom out to see the rest
+    fig.update_layout(title=title, xaxis_title="Year", yaxis_title="Frequency (cycles per year)",
+                      yaxis_range=[0, 6], height=450)
 
     # Returning the figure
     return fig

@@ -2,8 +2,8 @@
 [theme]
 base = "dark"                         # start from the dark theme, so text and widgets are light
 primaryColor = "#f2a900"              # buttons, sliders, selected items (a warm accent stands out on blue)
-backgroundColor = "#0b1f3a"           # page background: dark blue
-secondaryBackgroundColor = "#14305a"  # sidebar and boxes: a slightly lighter blue
+backgroundColor = "#06142a"           # page background: very dark blue
+secondaryBackgroundColor = "#0d2240"  # sidebar and boxes: a slightly lighter blue
 textColor = "#f2f5f7"                 # near-white text
 
 [server]
