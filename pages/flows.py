@@ -9,7 +9,8 @@ def get_client():
     return MongoClient(st.secrets["mongo"]["uri"])
 
 # Cache query results for 1 day to avoid hitting the DB limit
-@st.cache_data(ttl="1d")
+# MongoDB query in pages/flows.py
+@st.cache_data(ttl="1d", show_spinner="Loading flow data from the database...")
 def load_data(db_name, coll_name, query=None):
     coll = get_client()[db_name][coll_name]
     docs = list(coll.find(query or {}, {"_id": 0}))  # drop _id (ObjectId breaks st.dataframe)

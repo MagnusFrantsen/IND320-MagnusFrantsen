@@ -1,16 +1,18 @@
 import streamlit as st
-from utils import load_data
 import pandas as pd
-import matplotlib.pyplot as plt
+import plotly.express as px
+from utils import load_data, AREA_COLORS
 
 # Title and short description of the page
-st.title("Plots Page")
-st.write("This page has a plot of the imported data from NVE Magasinstatistikk API, a drop-down menu, radio buttons and a slider for user input.")
+st.title("Reservoirs")
+st.write("""Reservoir filling from the NVE Magasinstatistikk API. Choose a period with the slider;
+the area type is selected in the sidebar. The Plots tab shows the development over time,
+and the Table tab shows each area as small line charts.""")
 
 # Creating a list of all months available as options in the slider
 all_months = list(pd.period_range(start="1995-01", end=pd.Timestamp.today(), freq="M"))
 
-# Returning start, end variables used as input to determine the download interval in load_data()
+# Shared slider for both tabs: start and end determine the download interval in load_data()
 start, end = st.select_slider(
     "Select Date Range:",
     options=all_months,
@@ -20,76 +22,61 @@ start, end = st.select_slider(
 # Loading the data and defining the variables returned from the load_data() function in utils.py
 df, columns_to_plot, column_mapping = load_data(start, end)
 
-# Selectbox to choose which column to plot
-selected_column = st.selectbox(
-    "Select Column to Plot:", 
-    options=list(column_mapping.keys()) + ['All'],
-    format_func=lambda x: "All Columns" if x == 'All' else column_mapping[x])
-
-# Uses the global area type selected in the sidebar
+# Using the global area type selected in the sidebar, and keeping only those rows
 area = st.session_state["area_type"]
+df = df[df["area_type"] == area]
 
-# Caching the filtering and choosing NO as area type to make the plotting make sense
-df = df[df['area_type'] == area]
+def reservoir_chart(data, column, area):
+    """Return a Plotly line chart of one reservoir column, with one line per area number."""
+    # Area names as text, so each area number gets its own colour and legend entry
+    plot_df = data.assign(Area="Area " + data["area_nr"].astype(str))
+    fig = px.line(
+        plot_df, x="Date", y=column, color="Area",
+        color_discrete_sequence=AREA_COLORS,
+        labels={column: column_mapping[column], "Date": "Time"},
+        title=f"{column_mapping[column]} in area type {area}",
+    )
+    # One hover box listing all areas for the date under the cursor
+    fig.update_layout(hovermode="x unified", legend_title_text="")
+    return fig
 
-# If 'All' is selected it should say "All columns" in the menu in the select box
-if selected_column == 'All':
-    nice_title = "All Columns"
+# Two views of the same data: interactive charts and a compact table
+tab_plots, tab_table = st.tabs(["Plots", "Table"])
 
-# If something else than all is selected, the value from the given column-key is what should be the title of the plot
-else:    
-    nice_title = column_mapping[selected_column]
+with tab_plots:
+    # Selectbox to choose which column to plot (only used in this tab)
+    selected_column = st.selectbox(
+        "Select Column to Plot:",
+        options=list(column_mapping.keys()) + ["All"],
+        format_func=lambda x: "All Columns" if x == "All" else column_mapping[x])
 
-# Creating a figure with a subplot and defining the size
-fig, ax1 = plt.subplots(figsize=(16,8))
+    # Plotting every column below each other when 'All' is chosen, otherwise only the chosen column
+    columns = columns_to_plot if selected_column == "All" else [selected_column]
+    for col in columns:
+        # st.plotly_chart applies the app theme from config.toml to the chart
+        st.plotly_chart(reservoir_chart(df, col, area))
 
-# Plotting all columns if 'All is chosen
-if selected_column == 'All':    
+with tab_table:
+    st.write("""One table per area number. Week number, year, capacity and next publish date
+    are left out, since they are metadata.""")
 
-    # Loop going through every column
-    for col in columns_to_plot:
+    # Looping through the area numbers for the chosen area type
+    for area_nr in sorted(df["area_nr"].unique()):
 
-        fig, ax = plt.subplots(figsize=(16, 8))
+        # Keeping only the rows for the area number the loop is going through
+        df_single_area = df[df["area_nr"] == area_nr]
 
-        # Looping through the area numbers for the chosen area type
-        for area_nr, group in df.groupby('area_nr'):
-            ax.plot(group['Date'], group[col], label=f"Area {area_nr}")
+        # One row per column, holding all its values in the period, which LineChartColumn draws as a small chart
+        summary_df = pd.DataFrame([
+            {"Column": column_mapping.get(col, col),
+             "Selected period": df_single_area[col].to_list()}
+            for col in columns_to_plot
+        ])
 
-        # Defining the name of the plot
-        ax.set_title(f"{column_mapping[col]} in area type {area}")
-
-        # Naming the axes
-        ax.set_xlabel('Time')
-        ax.set_ylabel(column_mapping[col])
-
-        # Turning on a grid
-        ax.grid(True)
-
-        # Setting the location of the legends to the upper right section
-        ax.legend(loc='upper right')
-
-        # Displaying the plot in the Streamlit APp
-        st.pyplot(fig)
-
-# Plotting the selected column when one column is chosen
-else:
-    # Looping through each area number for the chosen area type
-    for area_nr, group in df.groupby('area_nr'):
-
-        # Creating the plot for the given area number
-        ax1.plot(group['Date'], group[selected_column], label=f"Area {area_nr}")
-
-        # Defining the title of the plot 
-        ax1.set_title(f"{nice_title} in Area Type {area}")
-
-        # Creating a legend
-        ax1.legend()
-        # Turning on a grid in the plot
-        ax1.grid(True)
-
-    # Creating labels for the x- and y-axes
-    ax1.set_xlabel('Time')
-    ax1.set_ylabel(column_mapping[selected_column])
-
-    # Displaying the figure in the Streamlit App
-    st.pyplot(fig)
+        # Each area in its own expander, without the dataframe index
+        with st.expander(f"Area {area_nr}", expanded=True):
+            st.dataframe(
+                summary_df,
+                column_config={"Selected period": st.column_config.LineChartColumn("Selected period")},
+                hide_index=True
+            )

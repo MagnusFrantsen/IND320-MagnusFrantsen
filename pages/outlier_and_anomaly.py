@@ -44,8 +44,8 @@ if tab1.open:
         fig, summary = spc_outliers(weather["temperature_2m"], cutoff_days, n_std,
                                     title=f"Temperature outliers in {area_type} {area_nr}, 2024")
 
-        # Displaying the plot
-        st.pyplot(fig)
+        # Displaying the interactive Plotly chart, themed by the app's config.toml
+        st.plotly_chart(fig)
 
         # Creating the different columns
         col1, col2, col3 = st.columns(3)
@@ -66,8 +66,9 @@ if tab2.open:
          # Defining the figure and summary by calling lof_anomalies, with the selected area in the title
         fig, summary = lof_anomalies(weather["temperature_2m"], proportion, n_neighbors,
                             title=f"Temperature anomalies in {area_type} {area_nr}, 2024 (Local Outlier Factor)")
-        # Displaying the figure
-        st.pyplot(fig)
+        
+        # Displaying the interactive Plotly chart, themed by the app's config.toml
+        st.plotly_chart(fig)
 
         # Defining the columns
         col1, col2, col3 = st.columns(3)
@@ -93,5 +94,6 @@ if tab2.open:
         )
         # Formatting the x-axis of the bar chart
         fig_months.update_xaxes(tickangle=0, dtick=1)
-        # Displaying the chart
+        
+        # Displaying the bar chart of anomalies per month
         st.plotly_chart(fig_months)

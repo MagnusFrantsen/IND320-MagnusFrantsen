@@ -11,27 +11,28 @@ def home():
 
     # Three equal columns with a bordered card for each topic
     col1, col2, col3 = st.columns(3)
-    card_height = 220
+    card_height = 310
 
     with col1.container(border=True, height=card_height):
-        st.subheader("Reservoirs")
-        st.write("Reservoir filling over time from NVE.")
-        st.page_link("pages/plots.py", label="Reservoir plots",  icon=":material/arrow_forward:")
-        st.page_link("pages/tables.py", label="Data tables",  icon=":material/arrow_forward:")
+        st.subheader("Explore")
+        st.write("Reservoir filling from NVE and electricity flows from ENTSO-E.")
+        st.page_link("pages/plots.py", label="Reservoirs", icon=":material/arrow_forward:")
+        st.page_link("pages/flows.py", label="Connection flows", icon=":material/arrow_forward:")
 
     with col2.container(border=True, height=card_height):
-        st.subheader("Electricity")
-        st.write("Flows to and from Norway from ENTSO-E.")
-        st.page_link("pages/flows.py", label="Connection flows",  icon=":material/arrow_forward:")
+        st.subheader("Analyze")
+        st.write("Seasonal patterns, weather outliers and anomalies, and how weather relates to reservoir filling.")
+        st.page_link("pages/stl_analysis.py", label="STL and spectrogram", icon=":material/arrow_forward:")
+        st.page_link("pages/outlier_and_anomaly.py", label="Outliers and anomalies", icon=":material/arrow_forward:")
+        st.page_link("pages/correlation.py", label="Correlation", icon=":material/arrow_forward:")
 
     with col3.container(border=True, height=card_height):
-        st.subheader("Analysis")
-        st.write("Seasonal patterns, outliers and anomalies.")
-        st.page_link("pages/stl_analysis.py", label="STL and spectrogram",  icon=":material/arrow_forward:")
-        st.page_link("pages/outlier_and_anomaly.py", label="Outliers and anomalies",  icon=":material/arrow_forward:")
+        st.subheader("Forecast")
+        st.write("Forecast of reservoir filling for the coming months.")
+        st.page_link("pages/reservoir_forecast.py", label="Reservoir forecast", icon=":material/arrow_forward:")
 
     # Names the data sources, so users know where the results come from
-    st.caption("Data: NVE Magasinstatistikk, ENTSO-E Transparency Platform and Open-Meteo (ERA5).")
+    st.caption("Data: NVE Magasinstatistikk, ENTSO-E Transparency Platform, Open-Meteo (ERA5) and Norges Bank.")
 
 # Adds a thin line under the top navigation bar
 st.markdown(
@@ -45,15 +46,18 @@ st.markdown(
     unsafe_allow_html=True,
 )
 pages = {
-    "**Overview**": [st.Page(home, title="Home Page", default=True)],
-    "**Reservoirs**": [
-        st.Page("pages/plots.py", title="Reservoir Plots"),
-        st.Page("pages/tables.py", title="Tables"),
+    "": [st.Page(home, title="Home", default=True)],
+    "**Explore**": [
+        st.Page("pages/plots.py", title="Reservoirs"),
+        st.Page("pages/flows.py", title="Connection Flows")
     ],
-    "**Electricity**": [st.Page("pages/flows.py", title="Connection Flows")],
-    "**Analysis**": [
+    "**Analyze**": [
         st.Page("pages/stl_analysis.py", title="STL and Spectrogram"),
         st.Page("pages/outlier_and_anomaly.py", title="Outliers and Anomalies"),
+        st.Page("pages/correlation.py", title="Correlation")
+    ],
+    "**Forecast**": [
+        st.Page("pages/reservoir_forecast.py", title = "Reservoir Forecast")
     ],
 }
 
@@ -80,6 +84,7 @@ with st.sidebar.expander("Select area", expanded=True):
     area_type = st.radio("Area Type", list(area_numbers), index=1, key="area_type")
     area_nr = st.selectbox("Area Number", area_numbers[area_type], key="area_nr")
 
-# Running the selected page based on user navigation.
+# Running the selected page, with a spinner shown until the page has finished loading
 page = st.navigation(pages, position="top")
-page.run()
+with st.spinner("Loading page..."):
+    page.run()

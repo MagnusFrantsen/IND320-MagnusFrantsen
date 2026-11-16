@@ -3,15 +3,28 @@ import pandas as pd
 import requests
 from pathlib import Path
 import numpy as np
-import matplotlib.pyplot as plt
 from scipy.fft import dct, idct
 from scipy.stats import median_abs_deviation
 from sklearn.neighbors import LocalOutlierFactor
 from scipy.signal import spectrogram
 from statsmodels.tsa.seasonal import STL
+import plotly.graph_objects as go
+from plotly.subplots import make_subplots
+
+# Colours used in every plot, chosen to stand out on the dark blue theme
+PLOT_COLORS = {
+    "series": "#5aa9e6",     # the main data series
+    "highlight": "#f2a900",  # outliers, anomalies and other marked points (same as primaryColor)
+    "limits": "#9fb3c8",     # control limits and reference lines
+}
+# One colour per area number, in order (area 1, 2, 3, ...)
+AREA_COLORS = ["#5aa9e6", "#f2a900", "#7fc8a9", "#e07a5f", "#c9ada7"]
+
+# Colour scale for the spectrogram: from a blue near the page background, through light blue, to the highlight colour
+SPECTROGRAM_SCALE = [[0.0, "#14305a"], [0.5, "#5aa9e6"], [1.0, "#f2a900"]]
 
 # Loading the data from the Magasinstatistikk API
-@st.cache_data(ttl=("1d"))
+@st.cache_data(ttl="1d", show_spinner="Downloading reservoir data from NVE...")
 def load_data(start, end):
 
     # Address of NVE's public API for weekly reservoir statistics (Magasinstatistikk)
@@ -180,6 +193,37 @@ def dct_highpass(series, cutoff_days=30):
     # seasonally adjusted temperature variations (SATV).
     return pd.Series(idct(coefficients, norm="ortho"), index=series.index, name="satv")
 
+def plot_series_with_points(series, points, label, points_name, title, limits=None):
+    """Return a Plotly chart of an hourly series with marked points, and optional limit lines.
+
+    series: the hourly values with a time index.
+    points: the marked values (outliers or anomalies), with a time index.
+    label: name and unit of the series, shown on the y-axis and in the legend.
+    points_name: legend name of the marked points, including their count.
+    limits: optional (lower, upper) series, drawn as dashed lines.
+    """
+    fig = go.Figure()
+
+    # Scattergl draws with WebGL, which keeps zooming smooth for the ~8,800 hourly points in a year
+    fig.add_trace(go.Scattergl(x=series.index, y=series, mode="lines", name=label,
+                               line=dict(color=PLOT_COLORS["series"], width=1)))
+
+    # The control limits follow the seasonal pattern; drawn dashed, with one legend entry for both
+    if limits is not None:
+        lower, upper = limits
+        for name, values, show in [("Control limits", upper, True), ("Lower limit", lower, False)]:
+            fig.add_trace(go.Scattergl(x=values.index, y=values, mode="lines", name=name,
+                                       legendgroup="limits", showlegend=show,
+                                       line=dict(color=PLOT_COLORS["limits"], width=1, dash="dash")))
+
+    # The marked points on top, in the highlight colour
+    fig.add_trace(go.Scattergl(x=points.index, y=points, mode="markers", name=points_name,
+                               marker=dict(color=PLOT_COLORS["highlight"], size=6)))
+
+    fig.update_layout(title=title, yaxis_title=label, height=450,
+                      legend=dict(orientation="h", yanchor="bottom", y=1.02, x=0))
+    return fig
+
 # Creating a function to identify outliers in a time series using Statistical Process Control (SPC) 
 # limits based on robust statistics of the seasonally adjusted temperature variations (SATV).
 def spc_outliers(series, cutoff_days=30, n_std=3.0, label="Temperature (°C)", title="Temperature outliers"):
@@ -215,18 +259,9 @@ def spc_outliers(series, cutoff_days=30, n_std=3.0, label="Temperature (°C)", t
     is_outlier = (satv < center - n_std * robust_std) | (satv > center + n_std * robust_std)
     outliers = pd.DataFrame({"value": series[is_outlier], "satv": satv[is_outlier]})
 
-    # Creating a plot to visualize the original series, SPC limits, and identified outliers.
-    fig, ax = plt.subplots(figsize=(11, 4.5))
-    # Plotting the series, the control limits and the outliers, with readable labels and the outlier count in the legend
-    ax.plot(series.index, series, color="tab:blue", linewidth=0.7, label=label)
-    ax.plot(series.index, upper, color="dimgray", linewidth=1, linestyle="--", label=f"Control limits (±{n_std:g} SD)")
-    ax.plot(series.index, lower, color="dimgray", linewidth=1, linestyle="--")
-    ax.scatter(outliers.index, outliers["value"], color="tab:orange", s=12, zorder=3, label=f"Outliers ({len(outliers)})")
-    ax.set_title(title)
-    ax.set_ylabel(label)
-    ax.grid(axis="y", alpha=0.3)
-    ax.legend(loc="upper right", frameon=False)
-    fig.tight_layout()
+     # Plotting the series, the control limits and the outliers, with the outlier count in the legend
+    fig = plot_series_with_points(series, outliers["value"], label, f"Outliers ({len(outliers)})",
+                                  title, limits=(lower, upper))
 
     """Creating a summary dictionary containing information about the number of outliers, their share in the series,
     the number of high and low outliers, the median of the SATV, the robust standard deviation of the SATV, 
@@ -269,14 +304,8 @@ def lof_anomalies(series, proportion=0.01, n_neighbors=20, label="Temperature (�
     scores = pd.Series(-model.negative_outlier_factor_, index=series.index)
     anomalies = pd.DataFrame({"value": series[is_anomaly], "lof_score": scores[is_anomaly]})
 
-    fig, ax = plt.subplots(figsize=(11, 4.5))
-    ax.plot(series.index, series, color="tab:blue", linewidth=0.7, label=label)
-    ax.scatter(anomalies.index, anomalies["value"], color="tab:orange", s=12, zorder=3, label=f"Anomalies ({len(anomalies)})")
-    ax.set_title(title)
-    ax.set_ylabel(label)
-    ax.grid(axis="y", alpha=0.3)
-    ax.legend(loc="upper right", frameon=False)
-    fig.tight_layout()
+    # Plotting the series with the anomalies marked, with the anomaly count in the legend
+    fig = plot_series_with_points(series, anomalies["value"], label, f"Anomalies ({len(anomalies)})", title)
 
     summary = {
         "n_anomalies": len(anomalies),
@@ -310,19 +339,25 @@ def plot_stl(series, period=52, seasonal=13, trend=None, robust=True, title ="ST
     Returns the figure.
     """
     result = STL(series, period=period, seasonal=seasonal, trend=trend, robust=robust).fit()
-    fig = result.plot()
 
-    # Readable names with units
-    names = ["Filling (%)", "Trend (%)", "Seasonal (%)", "Residual (%)"]
-    for ax, name in zip(fig.axes, names):
-        ax.set_title("")
-        ax.set_ylabel(name)
+    # One row per part of the decomposition, sharing the time axis so zooming moves all four together
+    parts = [("Filling (%)", result.observed), ("Trend (%)", result.trend),
+             ("Seasonal (%)", result.seasonal), ("Residual (%)", result.resid)]
+    fig = make_subplots(rows=4, cols=1, shared_xaxes=True, vertical_spacing=0.04)
 
-    # One title for the whole figure, and a size that fits the page
-    fig.suptitle(title)
-    fig.set_size_inches(11, 7)
-    fig.tight_layout()
-    # Returning the figure
+    for row, (name, values) in enumerate(parts, start=1):
+        # The residual is drawn as points, the other parts as lines
+        mode = "markers" if row == 4 else "lines"
+        fig.add_trace(go.Scatter(x=values.index, y=values, mode=mode, name=name, showlegend=False,
+                                 line=dict(color=PLOT_COLORS["series"], width=1.5),
+                                 marker=dict(color=PLOT_COLORS["series"], size=3)),
+                      row=row, col=1)
+        fig.update_yaxes(title_text=name, row=row, col=1)
+
+    # A zero line in the residual panel, so deviations above and below are easy to compare
+    fig.add_hline(y=0, line=dict(color=PLOT_COLORS["limits"], width=1, dash="dash"), row=4, col=1)
+
+    fig.update_layout(title=title, height=750, hovermode="x unified")
     return fig
 
 def plot_spectrogram(series, window_length=104, window_overlap=78, title="Spectrogram of reservoir filling"):
@@ -352,16 +387,15 @@ def plot_spectrogram(series, window_length=104, window_overlap=78, title="Spectr
     # times * 52 is the position in weeks, so times * 52 * 7 gives the exact number of days from the start
     window_centers = series.index[0] + pd.to_timedelta(times * 52 * 7, unit="D")
 
-    # Plotting the power in decibels as colours: time on the x-axis, frequency on the y-axis.
-    fig, ax = plt.subplots(figsize=(11, 4.5))
-
+        # Plotting the power in decibels as colours: time on the x-axis, frequency on the y-axis.
     # 1e-12 avoids taking the log of zero
-    mesh = ax.pcolormesh(window_centers, frequencies, 10 * np.log10(power + 1e-12), cmap="Blues", shading="auto")
-    fig.colorbar(mesh, ax=ax, label="Power (dB)")
-    ax.set_title(title)
-    ax.set_ylabel("Frequency (cycles per year)")
-    ax.set_xlabel("Year")
-    fig.tight_layout()
+    fig = go.Figure(go.Heatmap(
+        x=window_centers, y=frequencies, z=10 * np.log10(power + 1e-12),
+        colorscale=SPECTROGRAM_SCALE, colorbar=dict(title="Power (dB)"),
+        # Hover text: month of the window, frequency and power
+        hovertemplate="%{x|%Y-%m}<br>%{y:.2f} cycles per year<br>%{z:.1f} dB<extra></extra>",
+    ))
+    fig.update_layout(title=title, xaxis_title="Year", yaxis_title="Frequency (cycles per year)", height=450)
 
     # Returning the figure
     return fig
