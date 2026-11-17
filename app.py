@@ -1,7 +1,7 @@
 import streamlit as st
 import pandas as pd
 from requests.exceptions import RequestException
-from utils import (area_map, area_name, area_from_name, filling_for_month, weather_for_month,
+from utils import (area_map, area_name, area_from_name, filling_for_month, weather_for_month, month_slider,
                    WEATHER_VARS, WEATHER_LABELS, SUM_VARS)
 
 def on_map_click():
@@ -33,8 +33,8 @@ def home():
         format_func=lambda v: "Reservoir filling" if v == "filling" else WEATHER_LABELS[v][0],
         key="map_colour", persist_state="session")
     months = list(pd.period_range("1995-01", pd.Timestamp.today().to_period("M") - 1, freq="M"))
-    month = col_month.select_slider("Month", options=months, value=months[-1],
-                                    key="map_month", persist_state="session")
+    # Month shared with the forecast page, where it marks the end of the training data
+    month = month_slider(col_month, "Month", months, key="map_month")
 
     # The value per area: reservoir filling in the last week of the month, or the month's weather
     values, range_color = pd.Series(dtype=float), None

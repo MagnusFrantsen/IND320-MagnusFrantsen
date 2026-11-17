@@ -12,6 +12,8 @@ import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 import json
 import plotly.express as px
+import io
+from river import time_series, linear_model, optim, preprocessing
 
 # Colours used in every plot, chosen to stand out on the dark blue theme
 PLOT_COLORS = {
@@ -374,6 +376,153 @@ def plot_swc(reservoir, weather, correlation, reservoir_label, weather_label, la
                       legend=dict(orientation="h", yanchor="bottom", y=1.04, x=0))
     return fig
 
+# Norges Bank's API for exchange rates
+EXR_URL = "https://data.norges-bank.no/api/data/EXR/"
+
+
+@st.cache_data(ttl="1d", show_spinner="Downloading exchange rates from Norges Bank...")
+def load_exchange_rates(start, end):
+    """Weekly mean EUR and USD exchange rates in NOK from Norges Bank, for start to end (YYYY-MM-DD)."""
+    params = {"format": "csv", "startPeriod": start, "endPeriod": end, "locale": "en"}
+    response = requests.get(EXR_URL + "B.USD+EUR.NOK.SP", params=params, timeout=30)
+    response.raise_for_status()
+
+    # The CSV is semicolon-separated, with one row per currency and business day
+    rates = pd.read_csv(io.StringIO(response.text), sep=";")
+    rates["TIME_PERIOD"] = pd.to_datetime(rates["TIME_PERIOD"])
+    daily = rates.pivot(index="TIME_PERIOD", columns="BASE_CUR", values="OBS_VALUE")
+    return to_nve_weeks(daily)
+
+
+def forecast_table(area_type, area_nr, start_year, end_year, sources):
+    """Weekly table for the forecast: the filling of one area plus the chosen exogenous variables.
+
+    The sources are joined onto the filling, so the filling continues after the sources end
+    and can be compared with the forecast.
+    """
+    df, _, _ = load_data(pd.Period("1995-01", "M"), pd.Timestamp.today().to_period("M"))
+    table = filling_series(df, area_type, area_nr).rename("Filling").to_frame()
+
+    # Weather: one property at a time, one year at a time, to stay below Open-Meteo's rate limit
+    for prop in [s for s in sources if s in WEATHER_VARS]:
+        table = table.join(load_weather_period(area_type, area_nr, start_year, end_year, prop).rename(prop))
+
+    # Exchange rates, weekly means
+    currencies = [s for s in sources if s in ("EUR", "USD")]
+    if currencies:
+        table = table.join(load_exchange_rates(f"{start_year}-01-01", f"{end_year}-12-31")[currencies])
+    return table
+
+
+def future_sources(train, future_dates, sources, hold_last=("EUR", "USD")):
+    """Values of the sources for the weeks being forecast, using only what is known in advance.
+
+    Weather: the average for that week of the year in the training data.
+    Exchange rates (hold_last): the last known value.
+    """
+    # Week of the year for each date (week 53 is treated as week 52)
+    week = lambda index: index.isocalendar().week.clip(upper=52).to_numpy()
+
+    # Average per week of the year in the training data, looked up for the future dates
+    seasonal = train[sources].groupby(week(train.index)).mean()
+    future = seasonal.reindex(week(future_dates)).set_axis(future_dates).fillna(train[sources].mean())
+
+    # Exchange rates have no yearly pattern, so the last known value is used instead
+    for name in sources:
+        if name in hold_last:
+            future[name] = train[name].iloc[-1]
+    return future
+
+
+@st.cache_data(show_spinner="Training the forecast model...")
+def forecast_ahead(table, train_end, years, horizon, sources=(), p=2, d=0, q=0, sp=1, sd=1, sq=0,
+                   lr=0.001, target="Filling"):
+    """Train a River SNARIMAX model on the weeks up to train_end and forecast the following weeks.
+
+    The forecast is dynamic: each week ahead is built on the model's own earlier predictions.
+    table: weekly table with the filling and any source columns, indexed by Sunday dates
+    train_end: last date the model may learn from (the end of the chosen month)
+    years: number of years of training data before train_end
+    horizon: number of weeks to forecast
+    sources: names of the columns used as exogenous variables
+    p, d, q, sp, sd, sq: model settings; the season is fixed at 52 weeks
+    lr: learning rate for the regression's SGD optimizer; 0.001 kept the forecast stable in the notebook tests
+    Returns the training series, the forecast, and the actual filling for the forecast weeks where known.
+    """
+    sources = list(sources)
+
+    # Training data: the chosen number of years up to train_end, with no missing values
+    train = table[:train_end].dropna()
+    train = train[train.index > train.index[-1] - pd.DateOffset(years=years)]
+    future_dates = pd.date_range(train.index[-1] + pd.Timedelta(weeks=1), periods=horizon, freq="W-SUN")
+
+    model = time_series.SNARIMAX(
+        p=p, d=d, q=q, m=52, sp=sp, sd=sd, sq=sq,
+        regressor=preprocessing.StandardScaler() | linear_model.LinearRegression(optimizer=optim.SGD(lr)),
+    )
+
+    if sources:
+        # Learning one week at a time, with that week's source values as extra inputs
+        for y, x in zip(train[target], train[sources].to_dict("records")):
+            model.learn_one(y, x)
+        future = future_sources(train, future_dates, sources).to_dict("records")
+    else:
+        for y in train[target]:
+            model.learn_one(y)
+        future = None
+
+    forecast = pd.Series(model.forecast(horizon=horizon, xs=future), index=future_dates)
+
+    # The real filling for the forecast weeks, where it is already published
+    actual = table[target].reindex(future_dates).dropna()
+    return train[target], forecast, actual
+
+
+def forecast_animation(history, forecast, actual, title):
+    """Plotly animation: the last two years of history, then the forecast drawn one week at a time."""
+    history = history[history.index > history.index[-1] - pd.DateOffset(years=2)]
+    fig = go.Figure([
+        go.Scatter(x=history.index, y=history, mode="lines", name="Filling (training data)",
+                   line=dict(color=PLOT_COLORS["series"], width=2)),
+        go.Scatter(x=actual.index, y=actual, mode="lines", name="Actual filling",
+                   line=dict(color=PLOT_COLORS["limits"], width=2, dash="dot")),
+        go.Scatter(x=forecast.index[:1], y=forecast.iloc[:1], mode="lines+markers", name="Forecast",
+                   line=dict(color=PLOT_COLORS["highlight"], width=3), marker=dict(size=5)),
+    ])
+
+    # One frame per forecast week; each frame only updates the forecast line (trace 2)
+    fig.frames = [go.Frame(data=[go.Scatter(x=forecast.index[:k], y=forecast.iloc[:k])], traces=[2], name=str(k))
+                  for k in range(1, len(forecast) + 1)]
+
+    # Fixed axes, so the chart doesn't jump while the animation plays
+    all_y = pd.concat([history, forecast, actual])
+    fig.update_layout(
+        title=title, height=500, xaxis_title="Week", yaxis_title="Filling (%)",
+        xaxis=dict(range=[history.index[0], forecast.index[-1] + pd.Timedelta(weeks=2)]),
+        yaxis=dict(range=[max(0, all_y.min() - 5), min(100, all_y.max() + 5)]),
+        legend=dict(orientation="h", yanchor="bottom", y=1.02, x=0),
+        updatemenus=[dict(type="buttons", showactive=False, x=0, y=-0.15, xanchor="left", buttons=[
+            dict(label="Play", method="animate",
+                 args=[None, dict(frame=dict(duration=120, redraw=False), transition=dict(duration=0), fromcurrent=True)]),
+            dict(label="Pause", method="animate",
+                 args=[[None], dict(frame=dict(duration=0, redraw=False), mode="immediate")])])],
+        sliders=[dict(x=0.12, y=-0.15, len=0.88, currentvalue=dict(prefix="Weeks ahead: "),
+                      steps=[dict(label=str(k), method="animate",
+                                  args=[[str(k)], dict(frame=dict(duration=0, redraw=False), mode="immediate")])
+                             for k in range(1, len(forecast) + 1)])],
+    )
+    return fig
+
+
+def month_slider(container, label, months, key):
+    """Month slider whose value is shared between pages, so the map and the forecast use the same month."""
+    def store():
+        # Saving the chosen month where every page can read it
+        st.session_state["shared_month"] = st.session_state[key]
+
+    current = st.session_state.get("shared_month", months[-1])
+    return container.select_slider(label, options=months, value=current if current in months else months[-1],
+                                   key=key, on_change=store)
 
 # Creating a function to remove slow variations from a time series using the Discrete Cosine Transform (DCT).
 def dct_highpass(series, cutoff_days=30):
