@@ -1,0 +1,7 @@
+# Everything the app needs (the notebooks import utils.py), plus the notebook-only packages
+-r requirements.txt
+ipykernel
+matplotlib
+geopandas>=1.0
+pyspark
+cassandra-driver
