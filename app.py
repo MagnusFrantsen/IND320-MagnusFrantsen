@@ -69,7 +69,7 @@ def home():
     with col1.container(border=True, height=card_height):
         st.subheader("Explore")
         st.write("Reservoir filling from NVE and electricity flows from ENTSO-E.")
-        st.page_link("pages/plots.py", label="Reservoirs", icon=":material/arrow_forward:")
+        st.page_link("pages/plots.py", label="Reservoir Filling", icon=":material/arrow_forward:")
         st.page_link("pages/flows.py", label="Cross-border Flows", icon=":material/arrow_forward:")
 
     with col2.container(border=True, height=card_height):
@@ -102,7 +102,7 @@ st.markdown(
 pages = {
     "": [st.Page(home, title="Home", default=True)],
     "**Explore**": [
-        st.Page("pages/plots.py", title="Reservoirs"),
+        st.Page("pages/plots.py", title="Reservoir Filling"),
         st.Page("pages/flows.py", title="Cross-border Flows")
     ],
     "**Analyze**": [

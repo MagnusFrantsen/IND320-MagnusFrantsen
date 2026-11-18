@@ -4,7 +4,7 @@ import plotly.express as px
 from utils import load_data, AREA_COLORS
 
 # Title and short description of the page
-st.title("Reservoirs")
+st.title("Reservoir Filling")
 st.write("""Reservoir filling from the NVE Magasinstatistikk API. Choose a period with the slider;
 the area type is selected in the sidebar. The Plots tab shows the development over time,
 and the Table tab shows each area as small line charts.""")
