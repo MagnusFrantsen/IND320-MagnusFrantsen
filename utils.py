@@ -128,6 +128,10 @@ def fetch_locations(locations, start_date, end_date, variables=WEATHER_VARS):
     """
     count = len(locations)
 
+    # An empty table would send a request without coordinates and give a cryptic JSON error
+    if count == 0:
+        raise ValueError("No locations given: check the area name (e.g. 'NO 3', with a space)")
+
     # Defining the parameters for the download
     params = {
         # All coordinates in one request, separated by commas

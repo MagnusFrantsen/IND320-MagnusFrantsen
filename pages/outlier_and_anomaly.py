@@ -2,6 +2,7 @@ import streamlit as st
 from requests.exceptions import RequestException
 from utils import load_weather, lof_anomalies, spc_outliers, WEATHER_VARS, WEATHER_LABELS
 import plotly.express as px
+import pandas as pd
 
 # Naming the page
 st.title("Outlier and Anomaly Detection")
@@ -10,19 +11,29 @@ st.title("Outlier and Anomaly Detection")
 area_type = st.session_state["area_type"]
 area_nr = st.session_state["area_nr"]
 
-# Selector for the weather property, used by both tabs. Temperature is first in the list, so it is the default.
-# The key keeps the choice in session state when the user leaves the page and comes back.
-prop = st.selectbox(
+# Selectors for the weather property and the year, used by both tabs, side by side.
+# The keys keep the choices in session state when the user leaves the page and comes back.
+col_prop, col_year = st.columns([2, 1])
+
+# Temperature is first in the list, so it is the default
+prop = col_prop.selectbox(
     "Weather property",
     options=WEATHER_VARS,
     format_func=lambda var: f"{WEATHER_LABELS[var][0]} ({WEATHER_LABELS[var][1]})",
     key="outlier_property",
     persist_state="session"
 )
+
+# Full years only (newest first), since the SPC limits use robust statistics for the whole year.
+# 2024 is the default, as in part 3; a new year takes about 2-3 s to download the first time, then it is cached
+years = list(range(pd.Timestamp.today().year - 1, 2014, -1))
+year = col_year.selectbox("Year", options=years, index=years.index(2024),
+                          key="outlier_year", persist_state="session")
+
 name, unit, decimals = WEATHER_LABELS[prop]
 label = f"{name} ({unit})"
 
-st.write(f"Hourly {name.lower()} in {area_type} {area_nr}, 2024. Points far from the normal seasonal pattern are marked.")
+st.write(f"Hourly {name.lower()} in {area_type} {area_nr}, {year}. Points far from the normal seasonal pattern are marked.")
 
 # If the selected area type is "NO", display an info message and stop the execution of the page.
 # Weather data needs a specific area, because a national mean would average away regional outliers.
@@ -31,10 +42,10 @@ if area_type == "NO":
     st.info("Weather analysis needs a specific area. Select EL or VASS.")
     st.stop()
 
+
+# Loading hourly weather for the selected area and year
 try:
-    # Creating a spinner that is shown when load_weather is running
-    with st.spinner("Loading weather data..."):
-        weather = load_weather(area_type, area_nr, 2024)
+    weather = load_weather(area_type, area_nr, year)
 
 # Creating an error message if the data cannot be downloaded
 except RequestException as error:
@@ -55,7 +66,7 @@ if tab1.open:
 
         # Defining the figure and the summary by calling spc_outliers on the chosen property
         fig, summary = spc_outliers(weather[prop], cutoff_days, n_std, label=label,
-                                    title=f"{name} outliers in {area_type} {area_nr}, 2024")
+                                    title=f"{name} outliers in {area_type} {area_nr}, {year}")
 
         # Displaying the interactive Plotly chart, themed by the app's config.toml
         st.plotly_chart(fig)
@@ -77,7 +88,7 @@ if tab2.open:
 
         # Defining the figure and summary by calling lof_anomalies on the chosen property
         fig, summary = lof_anomalies(weather[prop], proportion, n_neighbors, label=label,
-                                     title=f"{name} anomalies in {area_type} {area_nr}, 2024 (Local Outlier Factor)")
+                                     title=f"{name} anomalies in {area_type} {area_nr}, {year} (Local Outlier Factor)")
         
         # Displaying the interactive Plotly chart, themed by the app's config.toml
         st.plotly_chart(fig)
