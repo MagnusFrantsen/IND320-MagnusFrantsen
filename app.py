@@ -70,20 +70,20 @@ def home():
         st.subheader("Explore")
         st.write("Reservoir filling from NVE and electricity flows from ENTSO-E.")
         st.page_link("pages/plots.py", label="Reservoirs", icon=":material/arrow_forward:")
-        st.page_link("pages/flows.py", label="Connection flows", icon=":material/arrow_forward:")
+        st.page_link("pages/flows.py", label="Cross-border Flows", icon=":material/arrow_forward:")
 
     with col2.container(border=True, height=card_height):
         st.subheader("Analyze")
         st.write("Seasonal patterns, weather outliers and anomalies, and how weather relates to reservoir filling.")
-        st.page_link("pages/stl_analysis.py", label="STL and spectrogram", icon=":material/arrow_forward:")
-        st.page_link("pages/outlier_and_anomaly.py", label="Outliers and anomalies", icon=":material/arrow_forward:")
-        st.page_link("pages/correlation.py", label="Correlation", icon=":material/arrow_forward:")
+        st.page_link("pages/stl_analysis.py", label="STL and Spectrogram", icon=":material/arrow_forward:")
+        st.page_link("pages/outlier_and_anomaly.py", label="Outliers and Anomalies", icon=":material/arrow_forward:")
+        st.page_link("pages/correlation.py", label="Sliding Window Correlation", icon=":material/arrow_forward:")
 
     with col3.container(border=True, height=card_height):
         st.subheader("Forecast")
         st.write("Forecast of reservoir filling for the coming months with River's SNARIMAX, "
                  "optionally using weather and exchange rates.")
-        st.page_link("pages/reservoir_forecast.py", label="Reservoir forecast", icon=":material/arrow_forward:")
+        st.page_link("pages/reservoir_forecast.py", label="Reservoir Forecast", icon=":material/arrow_forward:")
 
     # Names the data sources, so users know where the results come from
     st.caption("Data: NVE Magasinstatistikk, ENTSO-E Transparency Platform, Open-Meteo (ERA5) and Norges Bank.")
@@ -103,12 +103,12 @@ pages = {
     "": [st.Page(home, title="Home", default=True)],
     "**Explore**": [
         st.Page("pages/plots.py", title="Reservoirs"),
-        st.Page("pages/flows.py", title="Connection Flows")
+        st.Page("pages/flows.py", title="Cross-border Flows")
     ],
     "**Analyze**": [
         st.Page("pages/stl_analysis.py", title="STL and Spectrogram"),
         st.Page("pages/outlier_and_anomaly.py", title="Outliers and Anomalies"),
-        st.Page("pages/correlation.py", title="Correlation")
+        st.Page("pages/correlation.py", title="Sliding Window Correlation")
     ],
     "**Forecast**": [
         st.Page("pages/reservoir_forecast.py", title = "Reservoir Forecast")

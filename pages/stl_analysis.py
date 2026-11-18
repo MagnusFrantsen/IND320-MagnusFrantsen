@@ -3,7 +3,7 @@ import streamlit as st
 from utils import filling_series, load_data, plot_spectrogram, plot_stl
 
 # Naming the page
-st.title("STL and Spectrogram Analysis")
+st.title("STL and Spectrogram")
 
 # Filling data exists for all area types, so this page needs no NO guard
 area_type = st.session_state["area_type"]

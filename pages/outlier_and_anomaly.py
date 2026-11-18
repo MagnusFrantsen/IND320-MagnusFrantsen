@@ -1,11 +1,11 @@
 import streamlit as st
 from requests.exceptions import RequestException
-from utils import load_weather, lof_anomalies, spc_outliers, WEATHER_VARS, WEATHER_LABELS
+from utils import load_weather, lof_anomalies, spc_outliers, WEATHER_VARS, WEATHER_LABELS, area_name
 import plotly.express as px
 import pandas as pd
 
 # Naming the page
-st.title("Outlier and Anomaly Detection")
+st.title("Outliers and Anomalies")
 
 # Fetching the area type and area number chosen in the sidebar
 area_type = st.session_state["area_type"]
@@ -33,7 +33,7 @@ year = col_year.selectbox("Year", options=years, index=years.index(2024),
 name, unit, decimals = WEATHER_LABELS[prop]
 label = f"{name} ({unit})"
 
-st.write(f"Hourly {name.lower()} in {area_type} {area_nr}, {year}. Points far from the normal seasonal pattern are marked.")
+st.write(f"Hourly {name.lower()} in {area_name(area_type, area_nr)}, {year}. Points far from the normal seasonal pattern are marked.")
 
 # If the selected area type is "NO", display an info message and stop the execution of the page.
 # Weather data needs a specific area, because a national mean would average away regional outliers.
@@ -66,7 +66,7 @@ if tab1.open:
 
         # Defining the figure and the summary by calling spc_outliers on the chosen property
         fig, summary = spc_outliers(weather[prop], cutoff_days, n_std, label=label,
-                                    title=f"{name} outliers in {area_type} {area_nr}, {year}")
+                                    title=f"{name} outliers in {area_name(area_type, area_nr)}, {year}")
 
         # Displaying the interactive Plotly chart, themed by the app's config.toml
         st.plotly_chart(fig)
@@ -88,7 +88,7 @@ if tab2.open:
 
         # Defining the figure and summary by calling lof_anomalies on the chosen property
         fig, summary = lof_anomalies(weather[prop], proportion, n_neighbors, label=label,
-                                     title=f"{name} anomalies in {area_type} {area_nr}, {year} (Local Outlier Factor)")
+                                     title=f"{name} anomalies in {area_name(area_type, area_nr)}, {year} (Local Outlier Factor)")
         
         # Displaying the interactive Plotly chart, themed by the app's config.toml
         st.plotly_chart(fig)

@@ -31,8 +31,11 @@ def load_data(db_name, coll_name, query=None):
     docs = list(coll.find(query or {}, {"_id": 0}))  # drop _id (ObjectId breaks st.dataframe)
     return pd.DataFrame(docs)
 
-# Creating a title/header for the page
-st.title("ENTSO-E Data")
+# Creating a title and an introduction for the page
+st.title("Cross-border Electricity Flows")
+st.write("""Hourly physical flows between Norway and its neighbouring areas, from ENTSO-E (stored in MongoDB).
+Choose a connection and a year on the left; the line chart on the right uses the same choices.""")
+st.write("""Read more about the page below the plots.""")
 
 # Creating a pandas dataframe named df from load_data()
 df = load_data("ind320","crossborder_flow")
@@ -43,9 +46,6 @@ df["time"] = pd.to_datetime(df["time"])
 df["year"] = df["time"].dt.year
 df["month"] = df["time"].dt.month
 
-# Checking if the data was loaded during development of the page
-# st.write(df.head())
-
 # Creating the two columns in the page for the different plots
 left, right = st.columns(2)
 
@@ -55,12 +55,11 @@ months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun",
 
 # Creating the content inside the left column
 with left:
-
     # Creating a header for the left column
-    st.header("Piechart of Total Flow")
+    st.subheader("Total flow per direction")
     
     # Putting the radio buttons inside an expander for better user experience
-    with st.expander("Choose connection here"):
+    with st.expander("Choose connection"):
         
         # Creating radio buttons to select a connection. 
         connection = st.radio("Connection", sorted(df["connection"].unique()))
@@ -87,7 +86,7 @@ with left:
 with right:
 
     # Creating a header for the right column
-    st.header("Line Chart of Flow")
+    st.subheader("Hourly flow in selected months")
 
     # Because of the width of the column the pills are divided into two rows to 
     # make every month showing at the same time
