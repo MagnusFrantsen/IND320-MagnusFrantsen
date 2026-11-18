@@ -28,6 +28,14 @@ SPECTROGRAM_SCALE = [[0.0, "#0d2240"], [0.6, "#2f6ea3"], [1.0, "#f2a900"]]
 @st.cache_data(ttl="1d", show_spinner="Downloading reservoir data from NVE...")
 def load_data(start, end):
 
+    """Download NVE's weekly reservoir statistics (Magasinstatistikk) for all areas.
+
+    start, end: first and last month to keep, as pandas Periods (both included)
+    Returns the data with English column names, the columns that can be plotted,
+    and readable labels for those columns.
+    Cached for a day, since NVE publishes new figures once a week; every page reuses the same download.
+    """
+
     # Address of NVE's public API for weekly reservoir statistics (Magasinstatistikk)
     URL_MAGASIN = "https://biapi.nve.no/magasinstatistikk/api/Magasinstatistikk/HentOffentligData"
 
@@ -47,7 +55,7 @@ def load_data(start, end):
     # Sorting the rows by date, oldest first
     df = df.sort_values(by=['Date'], ascending=True)
     # Keeping only the rows with months between start and end including both
-    df = df[df['Date'].dt.to_period('M').between(start,end)]
+    df = df[df['Date'].dt.to_period('M').between(start, end)]
 
     # Choosing these as the relevant columns to plot from the csv file and returning a list for use in the other files
     columns_to_plot = ['res_level', 'res_level_TWh', 'prev_res_level', 'change_res_level']

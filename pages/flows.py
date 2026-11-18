@@ -6,12 +6,26 @@ from pymongo import MongoClient
 # Cache the client so it's created once, not on every rerun
 @st.cache_resource
 def get_client():
+
+    """Connect to MongoDB with the connection string stored in Streamlit's secrets.
+
+    st.cache_resource keeps one shared connection for all users and reruns,
+    instead of opening a new one each time the page runs.
+    """
+        
     return MongoClient(st.secrets["mongo"]["uri"])
 
 # Cache query results for 1 day to avoid hitting the DB limit
-# MongoDB query in pages/flows.py
 @st.cache_data(ttl="1d", show_spinner="Loading flow data from the database...")
 def load_data(db_name, coll_name, query=None):
+
+    """Read a collection from MongoDB into a DataFrame.
+
+    db_name, coll_name: database and collection names
+    query: optional MongoDB filter (None = all documents)
+    Cached for a day with st.cache_data, so the database is only queried once per day.
+    """
+        
     coll = get_client()[db_name][coll_name]
     docs = list(coll.find(query or {}, {"_id": 0}))  # drop _id (ObjectId breaks st.dataframe)
     return pd.DataFrame(docs)

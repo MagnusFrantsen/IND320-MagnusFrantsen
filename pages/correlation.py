@@ -24,10 +24,15 @@ prop = col1.selectbox(
     "Weather property", WEATHER_VARS,
     format_func=lambda v: f"{WEATHER_LABELS[v][0]} ({WEATHER_LABELS[v][1]})",
     key="corr_property", persist_state="session")
+
+# Weekly change shows short-term effects (e.g. rain filling the reservoir). 
+# The level shows the seasonal relation
 reservoir_var = col2.radio(
     "Reservoir variable", ["change", "level"], horizontal=True,
     format_func=lambda v: "Weekly change in filling" if v == "change" else "Filling level")
 
+# Years to compare; the default is the last five complete years
+# Weather is downloaded one cached year at a time
 this_year = pd.Timestamp.today().year
 start_year, end_year = st.select_slider(
     "Years", options=list(range(2015, this_year + 1)), value=(this_year - 5, this_year - 1))
@@ -42,7 +47,8 @@ except RequestException as error:
     st.error(f"Could not download weather data: {error}")
     st.stop()
 
-# Weekly reservoir series for the same area and period, in percent or percentage points
+# Weekly reservoir series for the same area, in percent (level) or percentage points (change),
+# cut to the weeks that have weather, so both series cover the same period
 df, _, _ = load_data(pd.Period("1995-01", "M"), pd.Timestamp.today().to_period("M"))
 df = df[(df["area_type"] == area_type) & (df["area_nr"] == area_nr)].set_index("Date")
 column = "change_res_level" if reservoir_var == "change" else "res_level"

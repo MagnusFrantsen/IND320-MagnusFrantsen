@@ -49,7 +49,8 @@ with st.expander("Model parameters (SNARIMAX)"):
                           help="0.01 made the forecast unstable in up to a quarter of the notebook tests; 0.001 almost never.")
     st.caption("The season is fixed at 52 weeks, since the data are weekly.")
 
-# Weekly table of the filling and the chosen variables
+# Weekly table of the filling and the chosen variables. The weather and exchange rates are downloaded
+# from the first year of the training period, so the downloads are no longer than needed
 start_year = (month.start_time - pd.DateOffset(years=years)).year
 try:
     table = forecast_table(area_type, area_nr, start_year, month.year, sources)

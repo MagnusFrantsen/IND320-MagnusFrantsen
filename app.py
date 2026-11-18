@@ -15,6 +15,13 @@ def on_map_click():
 
 # Creating the title and description for the whole Streamlit app, including buttons for navigation to different pages.
 def home():
+
+    """Home page: an introduction, the interactive map and cards linking to the pages in the three page groups.
+
+    Clicking an area on the map selects it for every page (see on_map_click), and the month
+    under the map is shared with the forecast page through session state (see month_slider).
+    """
+        
     st.title("Energy and Weather in Norway")
     st.write("""Explore Norwegian reservoir filling, cross-border electricity flows and weather data,
     find seasonal patterns and anomalies, and forecast the filling for the coming months.""")
