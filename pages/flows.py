@@ -2,6 +2,7 @@ import streamlit as st
 import pandas as pd
 import plotly.express as px # Suggested library by AI model Claude Opus 5.5
 from pymongo import MongoClient
+from utils import AREA_COLORS
 
 # Cache the client so it's created once, not on every rerun
 @st.cache_resource
@@ -74,9 +75,10 @@ with left:
     # Sum MW per direction for the whole year
     totals = sub.groupby("direction")["mw"].sum().reset_index()
 
-    # Creating the piechart
+    # Creating the pie chart, in the app's colours
     fig_pie = px.pie(totals, names="direction", values="mw",
-                     title=f"{connection} – total flow {year}")
+                     title=f"{connection} – total flow {year}",
+                     color_discrete_sequence=AREA_COLORS)
 
     # Making sure the piechart is shown in the Streamlit app
     st.plotly_chart(fig_pie)
@@ -154,9 +156,10 @@ with right:
         # Combining all the month segments and gap rows into one dataframe for plotting (method suggested by AI)
         plot_df = pd.concat(parts)
 
-        # Creating a line plot of the hourly flow, with one line (colour) per direction 
+        # Creating a line plot of the hourly flow, one line per direction, in the app's colours
         fig_line = px.line(plot_df, x="time", y="mw", color="direction",
-                        title=f"{connection} – hourly flow")
+                           title=f"{connection} – hourly flow",
+                           color_discrete_sequence=AREA_COLORS)
 
         # Displaying the Plotly figure in the Streamlit app
         st.plotly_chart(fig_line)
