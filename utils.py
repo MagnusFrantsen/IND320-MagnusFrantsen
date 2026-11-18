@@ -198,7 +198,6 @@ MAP_FILES = {"EL": "data/map_price_areas.geojson",
 # Weather variables that are summed over a period; the others are averaged
 SUM_VARS = ["precipitation", "snowfall"]
 
-
 @st.cache_data
 def load_map_areas(area_type):
     """Return the GeoJSON outlines for one area type, read once and kept in the cache."""
@@ -223,6 +222,8 @@ def area_from_name(name):
     return ("EL" if kind == "NO" else "VASS"), int(nr)
 
 
+# Cached: the map recomputes this on every click and month change otherwise
+@st.cache_data(ttl="1d", show_spinner="Preparing reservoir filling for the map...")
 def filling_for_month(area_type, month):
     """Reservoir filling in percent for every area of a type, from the last published week in the month."""
     # Loading the whole period once, so the cached download is reused for every month
@@ -575,6 +576,8 @@ def plot_series_with_points(series, points, label, points_name, title, limits=No
 
 # Creating a function to identify outliers in a time series using Statistical Process Control (SPC) 
 # limits based on robust statistics of the seasonally adjusted temperature variations (SATV).
+# Cached: the DCT filter on a year of hourly data only reruns when the data or a setting changes
+@st.cache_data(show_spinner="Finding outliers with SPC...")
 def spc_outliers(series, cutoff_days=30, n_std=3.0, label="Temperature (°C)", title="Temperature outliers"):
     """Find outliers with SPC limits based on robust statistics of the SATV.
 
@@ -626,6 +629,8 @@ def spc_outliers(series, cutoff_days=30, n_std=3.0, label="Temperature (°C)", t
     }
     return fig, summary
 
+# Cached: LOF on about 8,760 hourly points is the slowest analysis in the app
+@st.cache_data(show_spinner="Detecting anomalies with LOF...")
 def lof_anomalies(series, proportion=0.01, n_neighbors=20, label="Temperature (°C)", title="Temperature anomalies"):
     """Find anomalies in a time series with the Local Outlier Factor method.
 
@@ -677,6 +682,8 @@ def filling_series(data, omr_type="NO", omr_nr=0):
     # Any missing weeks get a value interpolated between the neighbouring weeks
     return series.asfreq("7D").interpolate()
 
+# Cached: the STL decomposition only reruns when the series or a setting changes
+@st.cache_data(show_spinner="Running the STL decomposition...")
 def plot_stl(series, period=52, seasonal=13, trend=None, robust=True, title ="STL decomposition of weekly reservoir filling"):
     """Plot an STL decomposition of a weekly series.
 
@@ -709,6 +716,8 @@ def plot_stl(series, period=52, seasonal=13, trend=None, robust=True, title ="ST
     fig.update_layout(title=title, height=750, hovermode="x unified")
     return fig
 
+# Cached: the spectrogram only reruns when the series or a window setting changes
+@st.cache_data(show_spinner="Computing the spectrogram...")
 def plot_spectrogram(series, window_length=104, window_overlap=78, title="Spectrogram of reservoir filling"):
     """Plot a spectrogram of a weekly series.
 
