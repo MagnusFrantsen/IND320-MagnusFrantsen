@@ -96,7 +96,11 @@ WEATHER_LABELS = {
 
 # Defining the function fetch locations
 def fetch_location(lat, lon, start_date, end_date):
-    """Download hourly ERA5 data for one location."""
+    """Download hourly ERA5 data for one location (one request per location).
+
+    Superseded by fetch_locations, which groups several locations in one request (part 3 feedback).
+    Kept because the part 3 notebook uses it, and the part 4 notebook compares the two to show they give the same result.
+    """
 
     # Defining the parameters for the download
     params = {
@@ -449,6 +453,8 @@ def forecast_ahead(table, train_end, years, horizon, sources=(), p=2, d=0, q=0, 
                    lr=0.001, target="Filling"):
     """Train a River SNARIMAX model on the weeks up to train_end and forecast the following weeks.
 
+    App version of forecast_filling in the Assignment 4 notebook: that one tests against hidden weeks,
+    while this one forecasts the weeks after a chosen month.
     The forecast is dynamic: each week ahead is built on the model's own earlier predictions.
     table: weekly table with the filling and any source columns, indexed by Sunday dates
     train_end: last date the model may learn from (the end of the chosen month)
