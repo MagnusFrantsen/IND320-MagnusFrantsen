@@ -3,17 +3,14 @@ import pandas as pd
 import requests
 from pathlib import Path
 import numpy as np
-from scipy.fft import dct, idct
-from scipy.stats import median_abs_deviation
-from sklearn.neighbors import LocalOutlierFactor
-from scipy.signal import spectrogram
-from statsmodels.tsa.seasonal import STL
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 import json
 import plotly.express as px
 import io
-from river import time_series, linear_model, optim, preprocessing
+
+# The heavy libraries (scipy, scikit-learn, statsmodels, river) are imported inside the functions that use them.
+# Importing them here added about 9 seconds before the home page could show anything when starting the app
 
 # Colours used in every plot, chosen to stand out on the dark blue theme
 PLOT_COLORS = {
@@ -450,6 +447,9 @@ def forecast_ahead(table, train_end, years, horizon, sources=(), p=2, d=0, q=0, 
     lr: learning rate for the regression's SGD optimizer; 0.001 kept the forecast stable in the notebook tests
     Returns the training series, the forecast, and the actual filling for the forecast weeks where known.
     """
+    # Imported here rather than at the top, so pages without forecasting load faster
+    from river import time_series, linear_model, optim, preprocessing
+
     sources = list(sources)
 
     # Training data: the chosen number of years up to train_end, with no missing values
@@ -528,6 +528,10 @@ def month_slider(container, label, months, key):
 # Creating a function to remove slow variations from a time series using the Discrete Cosine Transform (DCT).
 def dct_highpass(series, cutoff_days=30):
     """Remove variation slower than cutoff_days using the Discrete Cosine Transform."""
+
+    # Imported here rather than at the top, so pages without the DCT load faster
+    from scipy.fft import dct, idct
+
     if series.isna().any():
         raise ValueError("The DCT needs a series without missing values")
 
@@ -589,6 +593,9 @@ def spc_outliers(series, cutoff_days=30, n_std=3.0, label="Temperature (Â°C)", t
     title: title of the plot.
     """
 
+    # Imported here rather than at the top, so pages without SPC load faster
+    from scipy.stats import median_abs_deviation    
+
     # The seasonally adjusted temperature variations (SATV) are computed using the DCT highpass filter 
     # with the specified cutoff in days.
     satv = dct_highpass(series, cutoff_days)
@@ -641,6 +648,10 @@ def lof_anomalies(series, proportion=0.01, n_neighbors=20, label="Temperature (Â
     label: name and unit of the series, shown on the y-axis and in the legend.
     title: title of the plot.
     """
+
+    # Imported here rather than at the top; scikit-learn is slow to import and only needed for LOF
+    from sklearn.neighbors import LocalOutlierFactor
+
     if series.isna().any():
         raise ValueError("LOF needs a series without missing values")
 
@@ -694,6 +705,10 @@ def plot_stl(series, period=52, seasonal=13, trend=None, robust=True, title ="ST
     robust: reduces the influence of unusual weeks when True.
     Returns the figure.
     """
+
+    # Imported here rather than at the top; statsmodels is slow to import and only needed for STL
+    from statsmodels.tsa.seasonal import STL
+
     result = STL(series, period=period, seasonal=seasonal, trend=trend, robust=robust).fit()
 
     # One row per part of the decomposition, sharing the time axis so zooming moves all four together
@@ -726,6 +741,9 @@ def plot_spectrogram(series, window_length=104, window_overlap=78, title="Spectr
     window_overlap: number of weeks shared by neighbouring windows.
     Returns the figure.
     """
+
+    # Imported here rather than at the top, so pages without the spectrogram load faster
+    from scipy.signal import spectrogram
 
     # The windows must move forward, so the overlap has to be smaller than the window
     if window_overlap >= window_length:
