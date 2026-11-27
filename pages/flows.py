@@ -2,21 +2,40 @@ import streamlit as st
 import pandas as pd
 import plotly.express as px # Suggested library by AI model Claude Opus 5.5
 from pymongo import MongoClient
+from utils import AREA_COLORS
 
 # Cache the client so it's created once, not on every rerun
 @st.cache_resource
 def get_client():
+
+    """Connect to MongoDB with the connection string stored in Streamlit's secrets.
+
+    st.cache_resource keeps one shared connection for all users and reruns,
+    instead of opening a new one each time the page runs.
+    """
+        
     return MongoClient(st.secrets["mongo"]["uri"])
 
 # Cache query results for 1 day to avoid hitting the DB limit
-@st.cache_data(ttl="1d")
+@st.cache_data(ttl="1d", show_spinner="Loading flow data from the database...")
 def load_data(db_name, coll_name, query=None):
+
+    """Read a collection from MongoDB into a DataFrame.
+
+    db_name, coll_name: database and collection names
+    query: optional MongoDB filter (None = all documents)
+    Cached for a day with st.cache_data, so the database is only queried once per day.
+    """
+        
     coll = get_client()[db_name][coll_name]
     docs = list(coll.find(query or {}, {"_id": 0}))  # drop _id (ObjectId breaks st.dataframe)
     return pd.DataFrame(docs)
 
-# Creating a title/header for the page
-st.title("ENTSO-E Data")
+# Creating a title and an introduction for the page
+st.title("Cross-border Electricity Flows")
+st.write("""Hourly physical flows between Norway and its neighbouring areas, from ENTSO-E (stored in MongoDB).
+Choose a connection and a year on the left; the line chart on the right uses the same choices.""")
+st.write("""Read more about the page below the plots.""")
 
 # Creating a pandas dataframe named df from load_data()
 df = load_data("ind320","crossborder_flow")
@@ -27,9 +46,6 @@ df["time"] = pd.to_datetime(df["time"])
 df["year"] = df["time"].dt.year
 df["month"] = df["time"].dt.month
 
-# Checking if the data was loaded during development of the page
-# st.write(df.head())
-
 # Creating the two columns in the page for the different plots
 left, right = st.columns(2)
 
@@ -39,12 +55,11 @@ months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun",
 
 # Creating the content inside the left column
 with left:
-
     # Creating a header for the left column
-    st.header("Piechart of Total Flow")
+    st.subheader("Total flow per direction")
     
     # Putting the radio buttons inside an expander for better user experience
-    with st.expander("Choose connection here"):
+    with st.expander("Choose connection"):
         
         # Creating radio buttons to select a connection. 
         connection = st.radio("Connection", sorted(df["connection"].unique()))
@@ -59,9 +74,10 @@ with left:
     # Sum MW per direction for the whole year
     totals = sub.groupby("direction")["mw"].sum().reset_index()
 
-    # Creating the piechart
+    # Creating the pie chart, in the app's colours
     fig_pie = px.pie(totals, names="direction", values="mw",
-                     title=f"{connection} – total flow {year}")
+                     title=f"{connection} – total flow {year}",
+                     color_discrete_sequence=AREA_COLORS)
 
     # Making sure the piechart is shown in the Streamlit app
     st.plotly_chart(fig_pie)
@@ -70,7 +86,7 @@ with left:
 with right:
 
     # Creating a header for the right column
-    st.header("Line Chart of Flow")
+    st.subheader("Hourly flow in selected months")
 
     # Because of the width of the column the pills are divided into two rows to 
     # make every month showing at the same time
@@ -139,9 +155,10 @@ with right:
         # Combining all the month segments and gap rows into one dataframe for plotting (method suggested by AI)
         plot_df = pd.concat(parts)
 
-        # Creating a line plot of the hourly flow, with one line (colour) per direction 
+        # Creating a line plot of the hourly flow, one line per direction, in the app's colours
         fig_line = px.line(plot_df, x="time", y="mw", color="direction",
-                        title=f"{connection} – hourly flow")
+                           title=f"{connection} – hourly flow",
+                           color_discrete_sequence=AREA_COLORS)
 
         # Displaying the Plotly figure in the Streamlit app
         st.plotly_chart(fig_line)

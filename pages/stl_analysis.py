@@ -3,7 +3,7 @@ import streamlit as st
 from utils import filling_series, load_data, plot_spectrogram, plot_stl
 
 # Naming the page
-st.title("STL and Spectrogram Analysis")
+st.title("STL and Spectrogram")
 
 # Filling data exists for all area types, so this page needs no NO guard
 area_type = st.session_state["area_type"]
@@ -23,18 +23,21 @@ tab1, tab2 = st.tabs(["STL Analysis", "Spectrogram Analysis"], on_change="rerun"
 # Defining what happens in tab 1 (STL Analysis)
 if tab1.open:
     with tab1:
-        seasonal = st.slider("Seasonal smoother (weeks)", 7, 53, 13, step=2)
-        robust = st.toggle("Robust fitting", value=True)
-        trend = st.slider("Trend smoother (weeks)", 53, 261, 89, step=2)
-        st.pyplot(plot_stl(filling, seasonal=seasonal, trend=trend, robust=robust))   
+        with st.expander("Analysis Settings"):
+            seasonal = st.slider("Seasonal smoother (weeks)", 7, 53, 13, step=2)
+            robust = st.toggle("Robust fitting", value=True)
+            trend = st.slider("Trend smoother (weeks)", 53, 261, 89, step=2)
+                # Displaying the interactive STL decomposition, themed by the app's config.toml
+        st.plotly_chart(plot_stl(filling, seasonal=seasonal, trend=trend, robust=robust))   
 
 # Defining what happens in tab 2 (Spectrogram analysis)
 if tab2.open:
     with tab2:
-        # User can choose the window length
-        window_length = st.slider("Window length (weeks)", 26, 208, 104, step=26)
-        # User can define the overlap
-        window_overlap = st.slider("Window overlap (weeks)", 0, window_length - 1, window_length * 3 // 4,
-                                   help="Default is 75% of the window, so a new window starts every quarter window length.")
+        with st.expander("Analysis Settings"):
+            # User can choose the window length
+            window_length = st.slider("Window length (weeks)", 26, 208, 104, step=26)
+            # User can define the overlap
+            window_overlap = st.slider("Window overlap (weeks)", 0, window_length - 1, window_length * 3 // 4,
+                                    help="Default is 75% of the window, so a new window starts every quarter window length.")
         # Displaying the plot using the plot_spectrogram function from utils.py
-        st.pyplot(plot_spectrogram(filling, window_length, window_overlap))
+        st.plotly_chart(plot_spectrogram(filling, window_length, window_overlap))

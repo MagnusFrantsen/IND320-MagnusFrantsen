@@ -8,3 +8,7 @@ no_sync/
 .streamlit/secrets.toml
 
 data/weather_cache/
+
+# Full-resolution GeoJSON from the notebook; the app uses the simplified map_*.geojson files
+data/price_areas.geojson
+data/vass_areas.geojson

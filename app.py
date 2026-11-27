@@ -1,37 +1,92 @@
 import streamlit as st
+import pandas as pd
+from requests.exceptions import RequestException
+from utils import (area_map, area_name, area_from_name, filling_for_month, weather_for_month, month_slider, 
+                   load_data, load_map_areas, WEATHER_VARS, WEATHER_LABELS, SUM_VARS)
+
+def on_map_click():
+    """Store the clicked area as the selected area, so the sidebar and all pages use it.
+
+    Runs before the page is redrawn, which is what allows it to change the sidebar's selection.
+    """
+    points = st.session_state["map"]["selection"]["points"]
+    if points:
+        st.session_state["area_type"], st.session_state["area_nr"] = area_from_name(points[0]["location"])
 
 # Creating the title and description for the whole Streamlit app, including buttons for navigation to different pages.
 def home():
+
+    """Home page: an introduction, the interactive map and cards linking to the pages in the three page groups.
+
+    Clicking an area on the map selects it for every page (see on_map_click), and the month
+    under the map is shared with the forecast page through session state (see month_slider).
+    """
+        
     st.title("Energy and Weather in Norway")
-    st.write("""Explore Norwegian reservoir levels, cross-border electricity flows and
-    weather data. Choose an area in the sidebar, and the analysis pages update to match.""")
-    
-    st.write("""You can navigate to the different pages using the buttons below, 
-    or by using the top navigation bar.""")
+    st.write("""Explore Norwegian reservoir filling, cross-border electricity flows and weather data,
+    find seasonal patterns and anomalies, and forecast the filling for the coming months.""")
+
+    st.write("""Choose an area by clicking it on the map or in the sidebar; every page uses the same area.
+    The month under the map is shared with the forecast page, where it marks the end of the training data.
+    Use the cards below or the top navigation bar to move between pages.""")
+
+        # The area type and area chosen in the sidebar (or by clicking the map)
+    area_type = st.session_state["area_type"]
+    area_nr = st.session_state["area_nr"]
+
+    # What to colour the areas by, and which month; both are kept when visiting other pages
+    col_colour, col_month = st.columns(2)
+    colour_by = col_colour.selectbox(
+        "Colour areas by", ["filling"] + WEATHER_VARS,
+        format_func=lambda v: "Reservoir filling" if v == "filling" else WEATHER_LABELS[v][0],
+        key="map_colour", persist_state="session")
+    months = list(pd.period_range("1995-01", pd.Timestamp.today().to_period("M") - 1, freq="M"))
+    # Month shared with the forecast page, where it marks the end of the training data
+    month = month_slider(col_month, "Month", months, key="map_month")
+
+    # The value per area: reservoir filling in the last week of the month, or the month's weather
+    values, range_color = pd.Series(dtype=float), None
+    if colour_by == "filling":
+        values, label, range_color = filling_for_month(area_type, month), "Reservoir filling (%)", (0, 100)
+    else:
+        name, unit, _ = WEATHER_LABELS[colour_by]
+        label = f"{name}, monthly {'total' if colour_by in SUM_VARS else 'mean'} ({unit})"
+        try:
+            values = weather_for_month(area_type, month)[colour_by]
+        except RequestException as error:
+            st.warning(f"Could not download weather data, so the areas are not coloured: {error}")
+
+    # The map; clicking an area calls on_map_click, which selects that area for all pages
+    fig = area_map(area_type, values, area_name(area_type, area_nr), label, range_color)
+    st.plotly_chart(fig, key="map", on_select=on_map_click, selection_mode="points")
+    st.caption(f"Selected area: {area_name(area_type, area_nr)}. Click another area to change it; "
+               "the area type is chosen in the sidebar.")
 
     # Three equal columns with a bordered card for each topic
     col1, col2, col3 = st.columns(3)
-    card_height = 220
+    card_height = 310
 
     with col1.container(border=True, height=card_height):
-        st.subheader("Reservoirs")
-        st.write("Reservoir filling over time from NVE.")
-        st.page_link("pages/plots.py", label="Reservoir plots",  icon=":material/arrow_forward:")
-        st.page_link("pages/tables.py", label="Data tables",  icon=":material/arrow_forward:")
+        st.subheader("Explore")
+        st.write("Reservoir filling from NVE and electricity flows from ENTSO-E.")
+        st.page_link("pages/plots.py", label="Reservoir Filling", icon=":material/arrow_forward:")
+        st.page_link("pages/flows.py", label="Cross-border Flows", icon=":material/arrow_forward:")
 
     with col2.container(border=True, height=card_height):
-        st.subheader("Electricity")
-        st.write("Flows to and from Norway from ENTSO-E.")
-        st.page_link("pages/flows.py", label="Connection flows",  icon=":material/arrow_forward:")
+        st.subheader("Analyze")
+        st.write("Seasonal patterns, weather outliers and anomalies, and how weather relates to reservoir filling.")
+        st.page_link("pages/stl_analysis.py", label="STL and Spectrogram", icon=":material/arrow_forward:")
+        st.page_link("pages/outlier_and_anomaly.py", label="Outliers and Anomalies", icon=":material/arrow_forward:")
+        st.page_link("pages/correlation.py", label="Sliding Window Correlation", icon=":material/arrow_forward:")
 
     with col3.container(border=True, height=card_height):
-        st.subheader("Analysis")
-        st.write("Seasonal patterns, outliers and anomalies.")
-        st.page_link("pages/stl_analysis.py", label="STL and spectrogram",  icon=":material/arrow_forward:")
-        st.page_link("pages/outlier_and_anomaly.py", label="Outliers and anomalies",  icon=":material/arrow_forward:")
+        st.subheader("Forecast")
+        st.write("Forecast of reservoir filling for the coming months with River's SNARIMAX, "
+                 "optionally using weather and exchange rates.")
+        st.page_link("pages/reservoir_forecast.py", label="Reservoir Forecast", icon=":material/arrow_forward:")
 
     # Names the data sources, so users know where the results come from
-    st.caption("Data: NVE Magasinstatistikk, ENTSO-E Transparency Platform and Open-Meteo (ERA5).")
+    st.caption("Data: NVE Magasinstatistikk, ENTSO-E Transparency Platform, Open-Meteo (ERA5) and Norges Bank.")
 
 # Adds a thin line under the top navigation bar
 st.markdown(
@@ -45,15 +100,18 @@ st.markdown(
     unsafe_allow_html=True,
 )
 pages = {
-    "**Overview**": [st.Page(home, title="Home Page", default=True)],
-    "**Reservoirs**": [
-        st.Page("pages/plots.py", title="Reservoir Plots"),
-        st.Page("pages/tables.py", title="Tables"),
+    "": [st.Page(home, title="Home", default=True)],
+    "**Explore**": [
+        st.Page("pages/plots.py", title="Reservoir Filling"),
+        st.Page("pages/flows.py", title="Cross-border Flows")
     ],
-    "**Electricity**": [st.Page("pages/flows.py", title="Connection Flows")],
-    "**Analysis**": [
+    "**Analyze**": [
         st.Page("pages/stl_analysis.py", title="STL and Spectrogram"),
         st.Page("pages/outlier_and_anomaly.py", title="Outliers and Anomalies"),
+        st.Page("pages/correlation.py", title="Sliding Window Correlation")
+    ],
+    "**Forecast**": [
+        st.Page("pages/reservoir_forecast.py", title = "Reservoir Forecast")
     ],
 }
 
@@ -80,6 +138,27 @@ with st.sidebar.expander("Select area", expanded=True):
     area_type = st.radio("Area Type", list(area_numbers), index=1, key="area_type")
     area_nr = st.selectbox("Area Number", area_numbers[area_type], key="area_nr")
 
-# Running the selected page based on user navigation.
+# First visit in this session: loading the data shared by all pages, with each step shown,
+# so the user sees what is happening while the app starts. The box is removed once loading is done
+if not st.session_state.get("app_ready"):
+    startup = st.empty()
+    with startup.container():
+        with st.status("Starting the app...", expanded=True) as status:
+            try:
+                st.write("Downloading reservoir data from NVE...")
+                load_data(pd.Period("1995-01", "M"), pd.Timestamp.today().to_period("M"))
+                st.write("Loading the area maps...")
+                for area_type_name in ("EL", "VASS", "NO"):
+                    load_map_areas(area_type_name)
+                st.session_state["app_ready"] = True
+            except RequestException as error:
+                # The pages handle a failed download themselves; this only tells the user early
+                status.update(label=f"Could not download reservoir data from NVE: {error}", state="error")
+    # Removing the box once everything has loaded; an error message stays visible
+    if st.session_state.get("app_ready"):
+        startup.empty()
+
+# Running the selected page, with a spinner shown until the page has finished loading
 page = st.navigation(pages, position="top")
-page.run()
+with st.spinner("Loading page..."):
+    page.run()
