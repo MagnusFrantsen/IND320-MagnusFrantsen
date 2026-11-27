@@ -21,10 +21,9 @@ Repository for assignments in IND320 Fall 2026, including Jupyter notebooks, the
 ## Folder structure
 - **IND320/**
   - **.streamlit/**
-    - config.toml (app theme)
+    - config.toml
   - **data/**
     - shapefiles/
-    - weather_cache/ (local download cache, not on GitHub)
     - locations.csv
     - map_price_areas.geojson
     - map_vass_areas.geojson
