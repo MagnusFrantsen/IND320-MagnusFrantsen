@@ -1,6 +1,7 @@
 import streamlit as st
 from requests.exceptions import RequestException
-from utils import load_weather, lof_anomalies, spc_outliers, WEATHER_VARS, WEATHER_LABELS, area_name
+from utils import (load_property_year, lof_anomalies, spc_outliers, area_name, download_error_message,
+                   WEATHER_VARS, WEATHER_LABELS)
 import plotly.express as px
 import pandas as pd
 
@@ -42,14 +43,15 @@ if area_type == "NO":
     st.info("Weather analysis needs a specific area. Select EL or VASS.")
     st.stop()
 
-
-# Loading hourly weather for the selected area and year
+# Loading hourly values of the chosen property only (about six times smaller than all six variables),
+# which keeps the request well below Open-Meteo's rate limit and shares the cache with the correlation page
 try:
-    weather = load_weather(area_type, area_nr, year)
+    with st.spinner("Downloading weather data from Open-Meteo..."):
+        series = load_property_year(area_type, area_nr, year, prop)
 
-# Creating an error message if the data cannot be downloaded
+# Showing a readable message if the download fails
 except RequestException as error:
-    st.error(f"Could not download weather data: {error}")
+    st.error(download_error_message(error, "Open-Meteo"))
     st.stop()
 
 # Creating two tabs for Outlier/SPC analysis and Anomaly/LOF analysis, 
@@ -65,7 +67,7 @@ if tab1.open:
             n_std = st.slider("Limit width (standard deviations)", 1.0, 6.0, 3.0, step=0.5)
 
         # Defining the figure and the summary by calling spc_outliers on the chosen property
-        fig, summary = spc_outliers(weather[prop], cutoff_days, n_std, label=label,
+        fig, summary = spc_outliers(series, cutoff_days, n_std, label=label,
                                     title=f"{name} outliers in {area_name(area_type, area_nr)}, {year}")
 
         # Displaying the interactive Plotly chart, themed by the app's config.toml
@@ -87,7 +89,7 @@ if tab2.open:
         n_neighbors = st.slider("Number of neighbours", 5, 100, 20)
 
         # Defining the figure and summary by calling lof_anomalies on the chosen property
-        fig, summary = lof_anomalies(weather[prop], proportion, n_neighbors, label=label,
+        fig, summary = lof_anomalies(series, proportion, n_neighbors, label=label,
                                      title=f"{name} anomalies in {area_name(area_type, area_nr)}, {year} (Local Outlier Factor)")
         
         # Displaying the interactive Plotly chart, themed by the app's config.toml

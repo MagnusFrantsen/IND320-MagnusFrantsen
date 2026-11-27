@@ -1,8 +1,8 @@
 import streamlit as st
 import pandas as pd
 from requests.exceptions import RequestException
-from utils import (area_map, area_name, area_from_name, filling_for_month, weather_for_month, month_slider, 
-                   load_data, load_map_areas, WEATHER_VARS, WEATHER_LABELS, SUM_VARS)
+from utils import (area_map, area_name, area_from_name, filling_for_month, weather_for_month, month_slider,
+                   load_data, load_map_areas, download_error_message, WEATHER_VARS, WEATHER_LABELS, SUM_VARS)
 
 def on_map_click():
     """Store the clicked area as the selected area, so the sidebar and all pages use it.
@@ -54,7 +54,7 @@ def home():
         try:
             values = weather_for_month(area_type, month)[colour_by]
         except RequestException as error:
-            st.warning(f"Could not download weather data, so the areas are not coloured: {error}")
+            st.warning(download_error_message(error, "Open-Meteo") + " The areas are not coloured.")
 
     # The map; clicking an area calls on_map_click, which selects that area for all pages
     fig = area_map(area_type, values, area_name(area_type, area_nr), label, range_color)

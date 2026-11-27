@@ -2,7 +2,7 @@ import streamlit as st
 import pandas as pd
 from requests.exceptions import RequestException
 from utils import (load_data, load_weather_period, sliding_window_correlation, plot_swc,
-                   area_name, WEATHER_VARS, WEATHER_LABELS, SUM_VARS)
+                   area_name, download_error_message, WEATHER_VARS, WEATHER_LABELS, SUM_VARS)
 
 st.title("Sliding Window Correlation")
 st.write("""How strongly a weather property is related to the reservoir in the selected area, and how
@@ -44,7 +44,7 @@ window = col4.slider("Window length (weeks)", 4, 104, 26, step=2)
 try:
     weather = load_weather_period(area_type, area_nr, start_year, end_year, prop)
 except RequestException as error:
-    st.error(f"Could not download weather data: {error}")
+    st.error(download_error_message(error, "Open-Meteo"))
     st.stop()
 
 # Weekly reservoir series for the same area, in percent (level) or percentage points (change),

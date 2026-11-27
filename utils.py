@@ -183,7 +183,11 @@ def region_mean(weather):
 # Creating the load_weather function with 1d cache and a spinner showing when it is running
 @st.cache_data(ttl="1d", show_spinner="Loading weather data...")
 def load_weather(area_type, area_nr, year):
-    """Return hourly weather for an area, using the full NO3 result where it exists."""
+    """Return hourly weather (all six variables) for an area and year.
+
+    Superseded on the outlier page by load_property_year, which fetches only the chosen property.
+    Kept as the version used in part 3.
+    """
 
     # Using the NO3 data saved from the notebook if it exists, so the app does not have to call the API for NO3
     stored_file = Path(f"data/NO3_{year}_hourly.csv")
@@ -336,6 +340,21 @@ def load_property_year(area_type, area_nr, year, prop):
     end = min(pd.Timestamp(f"{year}-12-31"), pd.Timestamp.today().normalize() - pd.Timedelta(days=7))
     hourly = fetch_locations(selected, f"{year}-01-01", end.strftime("%Y-%m-%d"), variables=[prop])
     return region_mean(hourly)[prop]
+
+def download_error_message(error, source):
+    """Readable message for a failed download, used by every page that downloads data.
+
+    error: the RequestException that was raised
+    source: name of the service, shown to the user (e.g. "Open-Meteo")
+    """
+    response = getattr(error, "response", None)
+
+    # 429: the free request limit is reached. On Streamlit Cloud it is shared with other apps on the same servers
+    if response is not None and response.status_code == 429:
+        return f"{source}'s free request limit was reached. Wait a minute and try again."
+
+    # Any other failure: a short message, with the type of error for debugging
+    return f"Could not download data from {source}. Try again later. ({type(error).__name__})"
 
 
 def load_weather_period(area_type, area_nr, start_year, end_year, prop):

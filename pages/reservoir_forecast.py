@@ -3,7 +3,7 @@ import numpy as np
 import pandas as pd
 from requests.exceptions import RequestException
 from utils import (forecast_table, forecast_ahead, forecast_animation, month_slider, area_name,
-                   WEATHER_VARS, WEATHER_LABELS)
+                   download_error_message, WEATHER_VARS, WEATHER_LABELS)
 
 # Best setting from the forecast tests in the Assignment 4 notebook, used as defaults on this page
 BEST_SETTING = {"p": 2, "d": 0, "q": 0, "sp": 1, "sd": 1, "sq": 0, "lr": 0.001, "years": 10, "horizon": 26}
@@ -55,7 +55,7 @@ start_year = (month.start_time - pd.DateOffset(years=years)).year
 try:
     table = forecast_table(area_type, area_nr, start_year, month.year, sources)
 except RequestException as error:
-    st.error(f"Could not download the data: {error}")
+    st.error(download_error_message(error, "NVE, Open-Meteo or Norges Bank"))
     st.stop()
 
 # At least two years of complete training weeks are needed for a yearly season
