@@ -43,7 +43,7 @@ if area_type == "NO":
     st.info("Weather analysis needs a specific area. Select EL or VASS.")
     st.stop()
 
-# Loading hourly values of the chosen property only (about six times smaller than all six variables),
+# Loading hourly values of the chosen property only, not all variables
 # which keeps the request well below Open-Meteo's rate limit and shares the cache with the correlation page
 try:
     with st.spinner("Downloading weather data from Open-Meteo..."):

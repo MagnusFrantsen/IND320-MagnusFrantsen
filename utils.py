@@ -335,6 +335,7 @@ def to_nve_weeks(data, how="mean"):
 def load_property_year(area_type, area_nr, year, prop):
     """Hourly values of one weather property for one area and one year, the weighted mean of its grid cells.
     Fetching only one property keeps the request small, well below Open-Meteo's rate limit."""
+
     locations = pd.read_csv("data/locations.csv")
     selected = locations[locations["area"] == area_name(area_type, area_nr)]
     end = min(pd.Timestamp(f"{year}-12-31"), pd.Timestamp.today().normalize() - pd.Timedelta(days=7))
@@ -350,6 +351,8 @@ def download_error_message(error, source):
     response = getattr(error, "response", None)
 
     # 429: the free request limit is reached. On Streamlit Cloud it is shared with other apps on the same servers
+    # (this error appeared on the online version but never locally, so the outlier page requests only the
+    # chosen property instead of all variables, which also makes the app faster)
     if response is not None and response.status_code == 429:
         return f"{source}'s free request limit was reached. Wait a minute and try again."
 
